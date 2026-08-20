@@ -330,13 +330,48 @@ func wrapConnectionBindingID(local, remote net.Addr) string {
 	return local.String() + "|" + remote.String()
 }
 
+func wrapSessionKeyID(conn net.Conn) string {
+	if conn == nil {
+		return ""
+	}
+	if dc, ok := conn.(*directConn); ok && dc.pc != nil {
+		if wc, ok := dc.pc.(*wrapPacketConn); ok {
+			return wc.keyID
+		}
+	}
+	id := wrapConnectionBindingID(conn.LocalAddr(), conn.RemoteAddr())
+	if id == "" {
+		return ""
+	}
+	value, ok := wrapCredentialBindings.Load(id)
+	if !ok {
+		return ""
+	}
+	s, _ := value.(string)
+	return s
+}
+
 func connectionCredentialMatches(conn net.Conn, password string) bool {
 	if conn == nil || password == "" {
 		return false
 	}
-	id := wrapConnectionBindingID(conn.LocalAddr(), conn.RemoteAddr())
-	value, ok := wrapCredentialBindings.Load(id)
-	return ok && value == "pass:"+wrapKeyID(password)
+	kid := wrapSessionKeyID(conn)
+	return kid != "" && kid == "pass:"+wrapKeyID(password)
+}
+
+// connectionCredentialAllows: WRAP уже расшифровал GETCONF/AUTH.
+// Для RAW/direct берём keyID с wrapPacketConn (без 5-tuple).
+// На VK TURN Accept() и ReadFrom иногда дают разный remote — тогда
+// map-binding пуст и generated-пароль ошибочно получал DENIED:wrong_password.
+func connectionCredentialAllows(conn net.Conn, password string) bool {
+	if conn == nil || password == "" {
+		return false
+	}
+	kid := wrapSessionKeyID(conn)
+	if kid == "" {
+		return true
+	}
+	return kid == "pass:"+wrapKeyID(password)
 }
 
 // wrapReadBufPool — промежуточный буфер под RTP-заголовок+AEAD-тег+padding

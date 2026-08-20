@@ -473,6 +473,9 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusInternalServerError, "save: "+err.Error())
 		return
 	}
+	if err := refreshWrapKeysFromDBLocked(); err != nil {
+		log.Printf("[WEB] wrap keys после создания клиента: %v", err)
+	}
 	dbMutex.Unlock()
 	log.Printf("[WEB] создан клиент %s (%s)", label, maskPassword(newPass))
 	writePanelJSON(w, map[string]string{"password": newPass})

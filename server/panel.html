@@ -90,14 +90,17 @@ async function refresh(){
   const d = await api('/api/clients');
   document.getElementById('clients').innerHTML = (d.clients||[]).map(c => `<tr>
     <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'')}</div></td>
-    <td><code>${esc(c.password)}</code></td>
+    <td><code>${esc(c.password)}</code> <button class="ghost" onclick="copyText('${esc(c.password)}')">копировать</button></td>
     <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
     <td>${c.active_devices||0}/${c.max_devices||1}</td>
-    <td class="link">${esc(c.qwdtt_link||'')}</td>
+    <td class="link">${esc(c.qwdtt_link||'')}<div><button class="ghost" onclick="copyText(${JSON.stringify(c.qwdtt_link||'')})">копировать ссылку</button></div></td>
     <td>${c.owner?'':`<button class="bad" onclick="del('${esc(c.password)}')">×</button>`}</td>
   </tr>`).join('');
 }
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function copyText(s){
+  navigator.clipboard.writeText(s).then(()=>{},()=>prompt('Скопируйте', s));
+}
 async function create(e){
   e.preventDefault();
   const err = document.getElementById('cerr');
@@ -105,15 +108,20 @@ async function create(e){
   try {
     const f = new FormData(e.target);
     const body = new URLSearchParams(f);
-    await api('/api/clients', {
+    const created = await api('/api/clients', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body
     });
     e.target.reset();
     e.target.days.value = '30';
+    if (created.password) {
+      err.className = 'on';
+      err.textContent = 'Создан. Пароль: ' + created.password + ' — импортируйте qwdtt:// ссылку как новый профиль, не подставляйте пароль в профиль владельца.';
+    }
     await refresh();
   } catch (ex) {
+    err.className = 'off';
     err.textContent = 'Не создан: ' + (ex.message || ex);
   }
   return false;

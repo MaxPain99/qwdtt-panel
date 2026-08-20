@@ -146,7 +146,8 @@ func handleConn(ctx context.Context, clientConn net.Conn, wgEndpoint string, wgD
 		if len(parts) > 2 {
 			password = parts[2]
 		}
-		if !connectionCredentialMatches(clientConn, password) {
+		if !connectionCredentialAllows(clientConn, password) {
+			log.Printf("[WG] DENIED:wrong_password wrap-key GETCONF device=%s pass=%s", deviceID, maskPassword(password))
 			clientConn.Write([]byte("DENIED:wrong_password"))
 			return
 		}
@@ -248,7 +249,8 @@ func handleConn(ctx context.Context, clientConn net.Conn, wgEndpoint string, wgD
 		if len(parts) > 1 {
 			password = parts[1]
 		}
-		if !connectionCredentialMatches(clientConn, password) {
+		if !connectionCredentialAllows(clientConn, password) {
+			log.Printf("[WG] DENIED:wrong_password wrap-key AUTH device=%s pass=%s", deviceID, maskPassword(password))
 			clientConn.Write([]byte("DENIED:wrong_password"))
 			return
 		}

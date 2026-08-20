@@ -344,7 +344,8 @@ func handleConnRaw(ctx context.Context, clientConn net.Conn, router *rawRouter) 
 	if len(parts) > 1 {
 		password = parts[1]
 	}
-	if !connectionCredentialMatches(clientConn, password) {
+	if !connectionCredentialAllows(clientConn, password) {
+		log.Printf("[RAW] DENIED:wrong_password wrap-key device=%s pass=%s", deviceID, maskPassword(password))
 		clientConn.Write([]byte("DENIED:wrong_password"))
 		return
 	}

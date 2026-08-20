@@ -96,23 +96,41 @@ func deviceOwnerIDLocked(deviceID string) (string, bool) {
 }
 
 func authorizeDeviceOwnerLocked(deviceID, password string, isMain bool, entry *PasswordEntry) bool {
+	// Владелец всегда может зайти со своего ANDROID_ID.
+	if isMain {
+		return true
+	}
 	dev := db.Devices[deviceID]
 	if dev == nil {
 		return true
 	}
+	// Два сгенерированных пароля не делят одно устройство.
+	for pass, e := range db.Passwords {
+		if pass == password || e == nil {
+			continue
+		}
+		if passwordEntryHasDevice(e, deviceID) {
+			return false
+		}
+	}
+	mainID := ""
+	if db.MainPassword != "" {
+		mainID = wrapKeyID(db.MainPassword)
+	}
 	ownerID, consistent := deviceOwnerIDLocked(deviceID)
-	if !consistent {
-		return false
-	}
 	requestedOwnerID := wrapKeyID(password)
-	if ownerID != "" {
-		return ownerID == requestedOwnerID
-	}
-	if !isMain && !passwordEntryHasDevice(entry, deviceID) {
+	if !consistent {
+		// Телефон уже ходил как владелец, плюс в DeviceIDs есть клиент с панели —
+		// для теста нового пользователя на том же телефоне это нормально.
+		if mainID != "" && (dev.OwnerID == mainID || dev.RawOwnerID == mainID) {
+			return true
+		}
 		return false
 	}
-	dev.OwnerID = requestedOwnerID
-	return true
+	if ownerID == "" || ownerID == requestedOwnerID || (mainID != "" && ownerID == mainID) {
+		return true
+	}
+	return false
 }
 
 func setDeviceOwner(dev *ClientDevice, password string) {
@@ -221,6 +239,11 @@ func reconcileDeviceOwnershipLocked() {
 			continue
 		}
 		dev.OwnerID = knownOwner
+		mainID := wrapKeyID(db.MainPassword)
+		if mainID != "" && knownOwner == mainID {
+			// Телефон владельца может параллельно тестировать клиента с панели.
+			continue
+		}
 		for password, entry := range db.Passwords {
 			if passwordEntryHasDevice(entry, deviceID) && wrapKeyID(password) != knownOwner {
 				removeEntryDeviceBinding(entry, deviceID)
