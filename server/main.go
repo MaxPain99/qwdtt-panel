@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -38,6 +39,10 @@ func main() {
 	botToken := flag.String("bot-token", "", "Telegram Bot Token")
 	botTokenFile := flag.String("bot-token-file", "", "файл Telegram Bot Token")
 	dnsFlag := flag.String("dns", "8.8.8.8", "DNS серверы для клиентов")
+	webPort := flag.Uint("web-port", 46102, "HTTPS-порт панели; 0 = выключено")
+	webUser := flag.String("web-user", "admin", "логин веб-панели")
+	webPass := flag.String("web-pass", "", "пароль веб-панели (пусто = из panel.json / web.password)")
+	webPassFile := flag.String("web-pass-file", "", "файл пароля веб-панели")
 	flag.Parse()
 	dns = *dnsFlag
 	mainPasswordValue, err := loadOptionalSecret(*mainPass, *mainPassFile)
@@ -86,6 +91,16 @@ func main() {
 	}()
 
 	initDB(*configDir, mainPasswordValue, *adminID, botTokenValue)
+	webPassValue, err := loadOptionalSecret(*webPass, *webPassFile)
+	if err != nil {
+		log.Fatalf("[CONFIG] Пароль панели: %v", err)
+	}
+	if webPassValue == "" {
+		if b, e := os.ReadFile(filepath.Join(*configDir, "web.password")); e == nil {
+			webPassValue = strings.TrimSpace(string(b))
+		}
+	}
+	startWebPanel(*configDir, uint16(*webPort), *webUser, webPassValue)
 
 	keys, err := loadOrGenerateKeys(*configDir)
 	if err != nil {

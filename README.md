@@ -4,7 +4,24 @@ qWDTT — Android-приложение для подключения к собс
 
 Приложение создаёт системный VPN-туннель на телефоне, передаёт зашифрованный трафик через VK TURN и выпускает его в интернет через ваш сервер. Для сети такое соединение похоже на медиатрафик звонка WebRTC, а не на обычное прямое подключение к VPN-серверу.
 
+## Веб-панель (этот репозиторий)
+
+HTTPS-панель в том же процессе, что и `wdtt-server`. Официальный APK qWDTT не меняется.
+
+Установка на VPS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
+```
+
+Панель: `https://IP:46102` (self-signed). Запуск — рабочий SpaceNeuroX `wdtt.service` плюс только `-web-port 46102` и INPUT TCP 46102. Остальные флаги не трогаем.
+
+Обновление бинарника: кнопка в панели или `sudo bash /opt/qwdtt-panel/install.sh update`. Существующий `wdtt.service` не переписывается. Записать эталонный unit: `install.sh write-unit`.
+
+Не пушьте эту ветку в SpaceNeuroX — только в `MaxPain99/qwdtt-panel`.
+
 ## Быстрый старт
+
 
 1. Скачайте APK в разделе [Releases](https://github.com/SpaceNeuroX/proxy-turn-vk-android/releases).
 2. Добавьте VPS на вкладке «Серверы» и выполните установку серверной части.

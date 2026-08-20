@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qWDTT</title>
+<style>
+body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#0f1419;color:#e7ecf1;display:flex;min-height:100vh;align-items:center;justify-content:center}
+form{background:#1a222c;padding:28px;border-radius:12px;width:min(360px,92vw);box-shadow:0 8px 32px #0008}
+h1{margin:0 0 8px;font-size:1.25rem}
+p{margin:0 0 18px;color:#8b9aab;font-size:.9rem}
+label{display:block;margin:10px 0 4px;font-size:.85rem;color:#9fb0c0}
+input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #334155;border-radius:8px;background:#0f1419;color:#e7ecf1}
+button{margin-top:16px;width:100%;padding:10px;border:0;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer}
+.err{color:#f87171;min-height:1.2em;margin-top:10px;font-size:.9rem}
+</style>
+</head>
+<body>
+<form method="post" action="/login">
+<h1>qWDTT панель</h1>
+<p>Тот же процесс, что и wdtt-server. Клиентский APK не меняется.</p>
+<label>Логин</label>
+<input name="user" autocomplete="username" required>
+<label>Пароль</label>
+<input name="pass" type="password" autocomplete="current-password" required>
+<div class="err" id="e"></div>
+<button type="submit">Войти</button>
+</form>
+<script>
+if (location.search.indexOf('bad')>=0) document.getElementById('e').textContent='Неверный логин или пароль';
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+[Unit]
+Description=WDTT VPN Server
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/env bash -c "ip link show wdtt0 >/dev/null 2>&1 && ip link del wdtt0 2>/dev/null || true"
+ExecStartPre=-/usr/bin/env bash -c "if command -v iptables >/dev/null 2>&1; then iptables -C INPUT -p udp --dport 56000 -m comment --comment WDTT_MANAGED -j ACCEPT 2>/dev/null || iptables -I INPUT -p udp --dport 56000 -m comment --comment WDTT_MANAGED -j ACCEPT; iptables -C INPUT -p tcp --dport 56000 -m comment --comment WDTT_MANAGED -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 56000 -m comment --comment WDTT_MANAGED -j ACCEPT; iptables -C INPUT -i lo -p udp --dport 56001 -m comment --comment WDTT_WG_INTERNAL -j ACCEPT 2>/dev/null || iptables -I INPUT -i lo -p udp --dport 56001 -m comment --comment WDTT_WG_INTERNAL -j ACCEPT; iptables -C INPUT ! -i lo -p udp --dport 56001 -m comment --comment WDTT_WG_INTERNAL -j DROP 2>/dev/null || iptables -I INPUT ! -i lo -p udp --dport 56001 -m comment --comment WDTT_WG_INTERNAL -j DROP; iptables -C INPUT -p tcp --dport 56002 -m comment --comment WDTT_MANAGED -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 56002 -m comment --comment WDTT_MANAGED -j ACCEPT; iptables -C INPUT -p tcp --dport 22 -m comment --comment WDTT_MANAGED -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 22 -m comment --comment WDTT_MANAGED -j ACCEPT; iptables -C INPUT -p udp --dport 56002 -m comment --comment WDTT_MANAGED -j ACCEPT 2>/dev/null || iptables -I INPUT -p udp --dport 56002 -m comment --comment WDTT_MANAGED -j ACCEPT; iptables -C INPUT -p udp --dport 56003 -m comment --comment WDTT_MANAGED -j ACCEPT 2>/dev/null || iptables -I INPUT -p udp --dport 56003 -m comment --comment WDTT_MANAGED -j ACCEPT; iptables -C INPUT -p tcp --dport 46102 -m comment --comment WDTT_MANAGED -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 46102 -m comment --comment WDTT_MANAGED -j ACCEPT; fi"
+ExecStart=/usr/local/bin/wdtt-server -listen 0.0.0.0:56000 -wg-port 56001 -config-dir /etc/wdtt -password-file /etc/wdtt/main.password   -dns 1.1.1.1,1.0.0.1 -admin-listen 0.0.0.0:56002 -admin-token-file /etc/wdtt/admin.token -admin-cert /etc/wdtt/admin.crt -admin-key /etc/wdtt/admin.key -listen-direct 0.0.0.0:56002 -listen-raw 0.0.0.0:56003 -web-port 46102
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectClock=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

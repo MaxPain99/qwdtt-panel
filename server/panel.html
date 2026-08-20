@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qWDTT панель</title>
+<style>
+:root{--bg:#0f1419;--card:#1a222c;--line:#334155;--txt:#e7ecf1;--mut:#8b9aab;--acc:#3b82f6;--ok:#34d399;--bad:#f87171}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line)}
+header b{color:var(--acc)}
+a{color:var(--acc)}
+main{padding:20px;max-width:1100px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card span{display:block;color:var(--mut);font-size:.8rem}
+.card strong{font-size:1.2rem}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:.8rem}
+button,input,textarea{font:inherit}
+button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+button.bad{background:#7f1d1d}
+input,textarea{background:#0f1419;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+pre{background:#0b0f14;padding:12px;border-radius:8px;overflow:auto;max-height:320px;font-size:12px}
+.link{font-size:12px;word-break:break-all;color:var(--mut)}
+.on{color:var(--ok)} .off{color:var(--mut)}
+h2{font-size:1rem;margin:22px 0 10px}
+</style>
+</head>
+<body>
+<header>
+<div>qWDTT <b>панель</b></div>
+<div class="row" style="margin:0">
+<button class="ghost" onclick="upd()">Обновить сервер</button>
+<button class="ghost" onclick="reboot()">Reboot</button>
+<a href="/logout">Выйти</a>
+</div>
+</header>
+<main>
+<div class="grid" id="stats"></div>
+<h2>Клиенты</h2>
+<form class="row" onsubmit="return create(event)">
+<input name="label" placeholder="Имя" required>
+<input name="vk_hash" placeholder="VK hash" required>
+<input name="days" type="number" min="1" max="365" value="30" style="width:90px">
+<button type="submit">Создать</button>
+</form>
+<div class="card" style="overflow:auto">
+<table>
+<thead><tr><th>Имя</th><th>Пароль</th><th>Трафик</th><th>Устройства</th><th>Ссылка</th><th></th></tr></thead>
+<tbody id="clients"></tbody>
+</table>
+</div>
+<h2>Логи</h2>
+<button class="ghost" onclick="logs()">Обновить лог</button>
+<pre id="log"></pre>
+</main>
+<script>
+async function api(path, opt){
+  const r = await fetch(path, opt);
+  if (r.status === 401) { location.href='/login'; throw new Error('auth'); }
+  const t = await r.text();
+  let j = {};
+  try { j = t ? JSON.parse(t) : {}; } catch(e) { j = {error:t}; }
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function fmt(n){
+  n = Number(n)||0;
+  if (n < 1024) return n+' B';
+  if (n < 1048576) return (n/1024).toFixed(1)+' KB';
+  if (n < 1073741824) return (n/1048576).toFixed(1)+' MB';
+  return (n/1073741824).toFixed(2)+' GB';
+}
+async function refresh(){
+  const s = await api('/api/status');
+  document.getElementById('stats').innerHTML = [
+    ['Активные', s.active],
+    ['Всего сессий', s.total],
+    ['Аплинк', fmt(s.up_bytes)],
+    ['Даунлинк', fmt(s.down_bytes)],
+    ['Uptime', s.uptime],
+    ['NAT', s.nat],
+  ].map(([k,v])=>`<div class="card"><span>${k}</span><strong>${v}</strong></div>`).join('');
+  const d = await api('/api/clients');
+  document.getElementById('clients').innerHTML = (d.clients||[]).map(c => `<tr>
+    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'')}</div></td>
+    <td><code>${esc(c.password)}</code></td>
+    <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
+    <td>${c.active_devices||0}/${c.max_devices||1}</td>
+    <td class="link">${esc(c.qwdtt_link||'')}</td>
+    <td>${c.owner?'':`<button class="bad" onclick="del('${esc(c.password)}')">×</button>`}</td>
+  </tr>`).join('');
+}
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function create(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  await api('/api/clients', {method:'POST', body:f});
+  e.target.reset();
+  refresh();
+  return false;
+}
+async function del(p){
+  if (!confirm('Удалить клиента?')) return;
+  const f = new FormData(); f.set('password', p);
+  await api('/api/clients/delete', {method:'POST', body:f});
+  refresh();
+}
+async function logs(){
+  const d = await api('/api/logs');
+  document.getElementById('log').textContent = d.text || '';
+}
+async function upd(){
+  if (!confirm('Собрать wdtt-server с GitHub и перезапустить? Unit не трогаем.')) return;
+  await api('/api/update-server', {method:'POST'});
+  alert('Обновление запущено. Через минуту обновите страницу.');
+}
+async function reboot(){
+  if (!confirm('Перезагрузить VPS?')) return;
+  await api('/api/reboot', {method:'POST'});
+}
+refresh();
+logs();
+setInterval(refresh, 8000);
+</script>
+</body>
+</html>
