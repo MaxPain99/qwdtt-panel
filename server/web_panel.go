@@ -280,6 +280,20 @@ func handlePanelIndex(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(panelHTML))
 }
 
+func parsePanelForm(r *http.Request) error {
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		return r.ParseMultipartForm(1 << 20)
+	}
+	return r.ParseForm()
+}
+
+func writePanelError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
 func writePanelJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
@@ -384,32 +398,41 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		http.Error(w, "method", http.StatusMethodNotAllowed)
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
 		return
 	}
-	_ = r.ParseForm()
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
 	vkHash := strings.TrimSpace(r.FormValue("vk_hash"))
 	if vkHash == "" {
-		http.Error(w, `{"error":"vk_hash"}`, http.StatusBadRequest)
+		writePanelError(w, http.StatusBadRequest, "укажите VK hash")
 		return
 	}
 	days := 30
 	if v := r.FormValue("days"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > 365 {
-			http.Error(w, `{"error":"days"}`, http.StatusBadRequest)
+			writePanelError(w, http.StatusBadRequest, "days")
 			return
 		}
 		days = n
 	}
 	label := strings.TrimSpace(r.FormValue("label"))
 	dbMutex.Lock()
-	defer dbMutex.Unlock()
+	if db == nil {
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusInternalServerError, "db")
+		return
+	}
 	if cleanupExpiredPasswordsLocked(globalWgDev) > 0 {
 		saveDB()
 	}
-	if len(db.Passwords) >= maxGeneratedPasswords {
-		http.Error(w, `{"error":"лимит паролей"}`, http.StatusConflict)
+	const panelMaxPasswords = 256
+	if len(db.Passwords) >= panelMaxPasswords {
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusConflict, "лимит клиентов")
 		return
 	}
 	newPass := ""
@@ -424,11 +447,13 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if newPass == "" {
-		http.Error(w, `{"error":"generate"}`, http.StatusInternalServerError)
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusInternalServerError, "не удалось сгенерировать пароль")
 		return
 	}
 	if err := serverWrapKeys.AddPassword(newPass); err != nil {
-		http.Error(w, `{"error":"wrap"}`, http.StatusInternalServerError)
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusInternalServerError, "wrap: "+err.Error())
 		return
 	}
 	if label == "" {
@@ -441,7 +466,15 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 		VkHash:     vkHash,
 		Ports:      "56000,56001,56002",
 	}
-	saveDB()
+	if err := saveDB(); err != nil {
+		delete(db.Passwords, newPass)
+		serverWrapKeys.RemovePassword(newPass)
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusInternalServerError, "save: "+err.Error())
+		return
+	}
+	dbMutex.Unlock()
+	log.Printf("[WEB] создан клиент %s (%s)", label, maskPassword(newPass))
 	writePanelJSON(w, map[string]string{"password": newPass})
 }
 
@@ -450,10 +483,13 @@ func handlePanelDeleteClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		http.Error(w, "method", http.StatusMethodNotAllowed)
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
 		return
 	}
-	_ = r.ParseForm()
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
 	pass := r.FormValue("password")
 	dbMutex.Lock()
 	entry, ok := db.Passwords[pass]

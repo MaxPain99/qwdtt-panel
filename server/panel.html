@@ -49,6 +49,7 @@ h2{font-size:1rem;margin:22px 0 10px}
 <input name="days" type="number" min="1" max="365" value="30" style="width:90px">
 <button type="submit">Создать</button>
 </form>
+<p id="cerr" class="off"></p>
 <div class="card" style="overflow:auto">
 <table>
 <thead><tr><th>Имя</th><th>Пароль</th><th>Трафик</th><th>Устройства</th><th>Ссылка</th><th></th></tr></thead>
@@ -99,17 +100,37 @@ async function refresh(){
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function create(e){
   e.preventDefault();
-  const f = new FormData(e.target);
-  await api('/api/clients', {method:'POST', body:f});
-  e.target.reset();
-  refresh();
+  const err = document.getElementById('cerr');
+  err.textContent = '';
+  try {
+    const f = new FormData(e.target);
+    const body = new URLSearchParams(f);
+    await api('/api/clients', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    });
+    e.target.reset();
+    e.target.days.value = '30';
+    await refresh();
+  } catch (ex) {
+    err.textContent = 'Не создан: ' + (ex.message || ex);
+  }
   return false;
 }
 async function del(p){
   if (!confirm('Удалить клиента?')) return;
-  const f = new FormData(); f.set('password', p);
-  await api('/api/clients/delete', {method:'POST', body:f});
-  refresh();
+  try {
+    const body = new URLSearchParams({password: p});
+    await api('/api/clients/delete', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    });
+    await refresh();
+  } catch (ex) {
+    alert(ex.message || ex);
+  }
 }
 async function logs(){
   const d = await api('/api/logs');
