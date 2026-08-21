@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,7 +20,6 @@ import (
 
 const (
 	csqttTunIface    = "csqtt1"
-	csqttDefaultURL  = "https://127.0.0.1:46002"
 	csqttDefaultPeer = 46000
 	csqttCaesarShift = byte(47)
 )
@@ -76,49 +74,9 @@ func csqttCaesarEncode(s string) string {
 	return "c1:" + base64.StdEncoding.EncodeToString(out)
 }
 
-func csqttNormalizeURL(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		raw = csqttDefaultURL
-	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return "", errors.New("неверный URL панели CSQTT")
-	}
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return "", errors.New("нужен http или https")
-	}
-	host := u.Hostname()
-	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
-		return "", errors.New("CSQTT только на этом VPS: https://127.0.0.1:46002")
-	}
-	if u.Port() == "" {
-		u.Host = net.JoinHostPort(host, "46002")
-	}
-	u.Path = ""
-	u.RawQuery = ""
-	u.Fragment = ""
-	return strings.TrimRight(u.String(), "/"), nil
-}
-
-func csqttCredsFromStore() (url, user, pass string) {
-	panelStoreMu.Lock()
-	defer panelStoreMu.Unlock()
-	if panelStore == nil {
-		return csqttDefaultURL, "", ""
-	}
-	url = panelStore.CsqttURL
-	user = panelStore.CsqttUser
-	pass = panelStore.CsqttPass
-	if url == "" {
-		url = csqttDefaultURL
-	}
-	return
-}
-
 func (b *csqttBridge) loginLocked() error {
 	if b.user == "" || b.pass == "" {
-		return errors.New("укажите логин и пароль панели CSQTT")
+		return errors.New("нет логина CSQTT")
 	}
 	body, _ := json.Marshal(map[string]string{
 		"user": csqttCaesarEncode(b.user),
@@ -157,25 +115,46 @@ func (b *csqttBridge) loginLocked() error {
 	return nil
 }
 
+func (b *csqttBridge) applyLocalCredsLocked() error {
+	base, user, pass := csqttLocalCreds()
+	if !csqttInstalled() && pass == "" {
+		return errors.New("CSQTT на этом VPS не найден")
+	}
+	if pass == "" {
+		return errors.New("нет пароля панели CSQTT в /etc/csqtt/csqtt.env — сервис должен быть запущен")
+	}
+	if b.base != base || b.user != user || b.pass != pass {
+		b.base = base
+		b.user = user
+		b.pass = pass
+		b.cookie = ""
+	}
+	return nil
+}
+
 func (b *csqttBridge) do(method, path string, payload interface{}) ([]byte, int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.base == "" || b.user == "" || b.pass == "" {
-		url, user, pass := csqttCredsFromStore()
-		b.base, b.user, b.pass = url, user, pass
-		b.cookie = ""
-	}
-	if b.base == "" || b.user == "" || b.pass == "" {
-		return nil, 0, errors.New("сначала подключите панель CSQTT")
+	if err := b.applyLocalCredsLocked(); err != nil {
+		return nil, 0, err
 	}
 	if b.cookie == "" {
 		if err := b.loginLocked(); err != nil {
-			return nil, 0, err
+			b.cookie = ""
+			csqttInvalidateCreds()
+			_ = b.applyLocalCredsLocked()
+			if err2 := b.loginLocked(); err2 != nil {
+				return nil, 0, err
+			}
 		}
 	}
 	raw, status, err := b.roundTripLocked(method, path, payload)
 	if status == http.StatusUnauthorized {
 		b.cookie = ""
+		csqttInvalidateCreds()
+		if err := b.applyLocalCredsLocked(); err != nil {
+			return nil, status, err
+		}
 		if err := b.loginLocked(); err != nil {
 			return nil, 0, err
 		}
@@ -210,15 +189,6 @@ func (b *csqttBridge) roundTripLocked(method, path string, payload interface{}) 
 	return raw, resp.StatusCode, nil
 }
 
-func (b *csqttBridge) reset(base, user, pass string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.base = base
-	b.user = user
-	b.pass = pass
-	b.cookie = ""
-}
-
 func csqttPrepareSharedSocks() {
 	if err := csqttDeactivateLocalProxy(); err != nil {
 		log.Printf("[SOCKS] CSQTT свой прокси не выключен: %v — снимаю его TPROXY", err)
@@ -229,10 +199,6 @@ func csqttPrepareSharedSocks() {
 }
 
 func csqttDeactivateLocalProxy() error {
-	_, user, pass := csqttCredsFromStore()
-	if user == "" || pass == "" {
-		return errors.New("нет логина CSQTT — выключите SOCKS в панели CSQTT вручную")
-	}
 	_, status, err := csqttBr.do(http.MethodPost, "/api/local-proxy/deactivate", map[string]string{})
 	if err != nil {
 		return err
@@ -264,19 +230,11 @@ func csqttConnectLink(password string, peer uint16, hashes string) string {
 }
 
 func csqttPanelState() map[string]interface{} {
-	rawURL, user, pass := csqttCredsFromStore()
 	st := map[string]interface{}{
-		"url":          rawURL,
-		"user":         user,
-		"has_password": pass != "",
-		"connected":    false,
-		"error":        "",
-		"iface":        csqttTunIface,
-		"iface_up":     csqttIfaceUp(),
-	}
-	if user == "" || pass == "" {
-		st["error"] = "укажите логин и пароль панели CSQTT"
-		return st
+		"connected": false,
+		"error":     "",
+		"iface":     csqttTunIface,
+		"iface_up":  csqttIfaceUp(),
 	}
 	body, status, err := csqttBr.do(http.MethodGet, "/api/stats", nil)
 	if err != nil {
@@ -365,52 +323,11 @@ func handlePanelCsqtt(w http.ResponseWriter, r *http.Request) {
 	if !requirePanelAuth(w, r) {
 		return
 	}
-	if r.Method == http.MethodGet {
-		writePanelJSON(w, csqttPanelState())
-		return
-	}
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodGet {
 		writePanelError(w, http.StatusMethodNotAllowed, "method")
 		return
 	}
-	if err := parsePanelForm(r); err != nil {
-		writePanelError(w, http.StatusBadRequest, "form")
-		return
-	}
-	base, err := csqttNormalizeURL(r.FormValue("url"))
-	if err != nil {
-		writePanelError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	user := strings.TrimSpace(r.FormValue("user"))
-	if user == "" {
-		user = "admin"
-	}
-	pass := r.FormValue("password")
-	panelStoreMu.Lock()
-	if panelStore == nil {
-		panelStoreMu.Unlock()
-		writePanelError(w, http.StatusBadRequest, "нет panel.json")
-		return
-	}
-	if pass == "" {
-		pass = panelStore.CsqttPass
-	}
-	panelStore.CsqttURL = base
-	panelStore.CsqttUser = user
-	panelStore.CsqttPass = pass
-	_ = persistPanelStoreLocked()
-	panelStoreMu.Unlock()
-	csqttBr.reset(base, user, pass)
-	csqttStatMu.Lock()
-	csqttStatAt = time.Time{}
-	csqttStatMu.Unlock()
-	st := csqttPanelState()
-	if !st["connected"].(bool) {
-		writePanelError(w, http.StatusBadGateway, fmt.Sprint(st["error"]))
-		return
-	}
-	writePanelJSON(w, st)
+	writePanelJSON(w, csqttPanelState())
 }
 
 func handlePanelCsqttClients(w http.ResponseWriter, r *http.Request) {
