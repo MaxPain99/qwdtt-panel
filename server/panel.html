@@ -74,15 +74,17 @@ body.modal-open{overflow:hidden}
 <h2>SOCKS5</h2>
 <button class="ghost" type="button" onclick="socksOff()">Выключить</button>
 </div>
-<p class="off">Трафик клиентов с TUN уходит в локальный SOCKS5 (Xray, sing-box). Если прокси не отвечает — выход с VPS напрямую. Порты WRAP не трогаются.</p>
+<p class="off">Порт SOCKS задаёте сами. Добавить и включить можно только если порт <b>занят именно SOCKS5</b>. Свободный порт и порты qWDTT (56000–56003, 46102) система не примет.</p>
 <form class="row" onsubmit="return addSocks(event)">
 <input name="name" placeholder="Имя">
 <input name="host" value="127.0.0.1" placeholder="127.0.0.1">
-<input name="port" type="number" min="1" max="65535" value="45000" placeholder="Порт" style="width:110px;flex:0">
+<input name="port" type="number" min="1" max="65535" placeholder="Порт" required style="width:110px;flex:0" oninput="schedulePortCheck()">
 <input name="username" placeholder="Логин">
 <input name="password" type="password" placeholder="Пароль">
-<button type="submit">Добавить</button>
+<button class="ghost" type="button" onclick="checkSocksPort()">Проверить порт</button>
+<button type="submit" id="socks-add">Добавить</button>
 </form>
+<p id="socks-port-status" class="off"></p>
 <p id="serr" class="off"></p>
 <div class="card" style="overflow:auto">
 <table>
@@ -343,11 +345,13 @@ async function addSocks(e){
   const err = document.getElementById('serr');
   err.textContent = '';
   try {
+    const chk = await inspectSocksForm(e.target);
+    if (!chk.allow) throw new Error(chk.message || 'порт нельзя использовать');
     const body = new URLSearchParams(new FormData(e.target));
     await api('/api/socks', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
     e.target.reset();
     e.target.host.value = '127.0.0.1';
-    e.target.port.value = '45000';
+    setPortStatus(null);
     await loadSocks();
   } catch (ex) {
     err.className = 'off';
@@ -355,6 +359,55 @@ async function addSocks(e){
     err.textContent = ex.message || ex;
   }
   return false;
+}
+let portCheckTimer = 0;
+function schedulePortCheck(){
+  clearTimeout(portCheckTimer);
+  portCheckTimer = setTimeout(checkSocksPort, 400);
+}
+function socksFormEl(){
+  return document.querySelector('form[onsubmit="return addSocks(event)"]');
+}
+async function inspectSocksForm(form){
+  const f = form || socksFormEl();
+  const body = new URLSearchParams({
+    host: (f.host.value||'127.0.0.1').trim(),
+    port: (f.port.value||'').trim(),
+    username: (f.username.value||'').trim(),
+    password: f.password.value||''
+  });
+  return api('/api/socks/check', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body
+  });
+}
+function setPortStatus(chk){
+  const el = document.getElementById('socks-port-status');
+  const btn = document.getElementById('socks-add');
+  if (!el) return;
+  if (!chk) {
+    el.textContent = '';
+    el.className = 'off';
+    if (btn) btn.disabled = false;
+    return;
+  }
+  el.textContent = chk.message || '';
+  el.className = chk.allow ? 'on' : 'off';
+  el.style.color = chk.allow ? 'var(--ok)' : 'var(--bad)';
+  if (btn) btn.disabled = !chk.allow;
+}
+async function checkSocksPort(){
+  const f = socksFormEl();
+  if (!f || !(f.port.value||'').trim()) {
+    setPortStatus(null);
+    return;
+  }
+  try {
+    setPortStatus(await inspectSocksForm(f));
+  } catch (ex) {
+    setPortStatus({allow:false, message: ex.message || ex});
+  }
 }
 async function socksOn(id){
   const err = document.getElementById('serr');

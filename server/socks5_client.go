@@ -228,6 +228,56 @@ func socksPortOpen(p SocksProfile) bool {
 	return true
 }
 
+type socksPortInfo struct {
+	Host      string `json:"host"`
+	Port      uint16 `json:"port"`
+	Reserved  bool   `json:"reserved"`
+	Free      bool   `json:"free"`
+	Listening bool   `json:"listening"`
+	SocksOK   bool   `json:"socks_ok"`
+	Allow     bool   `json:"allow"`
+	Message   string `json:"message"`
+}
+
+func socksReservedPort(port uint16) bool {
+	switch port {
+	case 22, 56000, 56001, 56002, 56003, 46102, 11662:
+		return true
+	default:
+		return false
+	}
+}
+
+func socksInspect(p SocksProfile) socksPortInfo {
+	if p.Host == "" {
+		p.Host = "127.0.0.1"
+	}
+	info := socksPortInfo{Host: p.Host, Port: p.Port}
+	if p.Port == 0 {
+		info.Message = "укажите порт SOCKS5"
+		return info
+	}
+	if socksReservedPort(p.Port) {
+		info.Reserved = true
+		info.Message = fmt.Sprintf("порт %d занят службой qWDTT/SSH — укажите другой", p.Port)
+		return info
+	}
+	if !socksPortOpen(p) {
+		info.Free = true
+		info.Message = fmt.Sprintf("порт %d свободен — SOCKS5 на нём не слушает", p.Port)
+		return info
+	}
+	info.Listening = true
+	if err := socksProbe(p); err != nil {
+		info.Message = fmt.Sprintf("порт %d занят, но это не SOCKS5: %v", p.Port, err)
+		return info
+	}
+	info.SocksOK = true
+	info.Allow = true
+	info.Message = fmt.Sprintf("порт %d занят, SOCKS5 отвечает — можно", p.Port)
+	return info
+}
+
 func socksProbe(p SocksProfile) error {
 	c, err := socksTCPDial(p, 3*time.Second)
 	if err != nil {

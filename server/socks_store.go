@@ -8,11 +8,15 @@ import (
 )
 
 func socksStoreCreate(p SocksProfile) error {
-	if p.Port == 0 {
-		p.Port = 45000
-	}
 	if p.Host == "" {
 		p.Host = "127.0.0.1"
+	}
+	if p.Port == 0 {
+		return errors.New("укажите порт SOCKS5")
+	}
+	chk := socksInspect(p)
+	if !chk.Allow {
+		return errors.New(chk.Message)
 	}
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
@@ -26,6 +30,15 @@ func socksStoreCreate(p SocksProfile) error {
 	}
 	if len(panelStore.SocksProfiles) >= 20 {
 		return fmt.Errorf("лимит 20 SOCKS-профилей")
+	}
+	for _, x := range panelStore.SocksProfiles {
+		host := x.Host
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		if host == p.Host && x.Port == p.Port {
+			return fmt.Errorf("профиль на %s:%d уже есть", p.Host, p.Port)
+		}
 	}
 	panelStore.SocksProfiles = append(panelStore.SocksProfiles, p)
 	return persistPanelStoreLocked()

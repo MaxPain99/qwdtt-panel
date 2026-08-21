@@ -80,8 +80,9 @@ func socksActivate(p SocksProfile) error {
 	if p.Port == 0 {
 		return errors.New("укажите порт SOCKS5")
 	}
-	if err := socksProbe(p); err != nil {
-		return err
+	chk := socksInspect(p)
+	if !chk.Allow {
+		return errors.New(chk.Message)
 	}
 	socksDeactivate()
 	e := &socksEngine{

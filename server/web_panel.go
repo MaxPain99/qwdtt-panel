@@ -138,6 +138,7 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/logs/clear", handlePanelLogsClear)
 	mux.HandleFunc("/api/logs/toggle", handlePanelLogsToggle)
 	mux.HandleFunc("/api/socks", handlePanelSocks)
+	mux.HandleFunc("/api/socks/check", handlePanelSocksCheck)
 	mux.HandleFunc("/api/socks/delete", handlePanelSocksDelete)
 	mux.HandleFunc("/api/socks/activate", handlePanelSocksActivate)
 	mux.HandleFunc("/api/socks/deactivate", handlePanelSocksDeactivate)
@@ -694,7 +695,7 @@ func handlePanelSocks(w http.ResponseWriter, r *http.Request) {
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	port := uint16(45000)
+	port := uint16(0)
 	if v := r.FormValue("port"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > 65535 {
@@ -702,6 +703,10 @@ func handlePanelSocks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		port = uint16(n)
+	}
+	if port == 0 {
+		writePanelError(w, http.StatusBadRequest, "укажите порт SOCKS5")
+		return
 	}
 	if name == "" {
 		name = fmt.Sprintf("SOCKS %s:%d", host, port)
@@ -718,6 +723,33 @@ func handlePanelSocks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writePanelJSON(w, socksPanelState())
+}
+
+func handlePanelSocksCheck(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	host := strings.TrimSpace(r.FormValue("host"))
+	n, err := strconv.Atoi(r.FormValue("port"))
+	if err != nil || n < 1 || n > 65535 {
+		writePanelError(w, http.StatusBadRequest, "укажите порт")
+		return
+	}
+	p := SocksProfile{
+		Host:     host,
+		Port:     uint16(n),
+		Username: strings.TrimSpace(r.FormValue("username")),
+		Password: r.FormValue("password"),
+	}
+	writePanelJSON(w, socksInspect(p))
 }
 
 func handlePanelSocksDelete(w http.ResponseWriter, r *http.Request) {
