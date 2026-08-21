@@ -21,8 +21,11 @@ func setupFullConeNAT(wgIface string) error {
 	case commandExists("iptables"):
 		for i := 0; i < 5; i++ {
 			exec.Command("iptables", "-t", "nat", "-D", "POSTROUTING", "-s", wgServerCIDR, "-o", extIface, "-m", "comment", "--comment", "WDTT_MANAGED", "-j", "MASQUERADE").Run()
+			exec.Command("iptables", "-t", "nat", "-D", "POSTROUTING", "-s", csqttTUNCIDR, "-m", "comment", "--comment", "WDTT_SKIP_CSQTT", "-j", "RETURN").Run()
 		}
 		exec.Command("iptables", "-t", "nat", "-I", "POSTROUTING", "1", "-s", wgServerCIDR, "-o", extIface, "-m", "comment", "--comment", "WDTT_MANAGED", "-j", "MASQUERADE").Run()
+		// CSQTT 10.66.67.0/24 — свой MASQUERADE; WDTT /16 не должен её перехватывать.
+		exec.Command("iptables", "-t", "nat", "-I", "POSTROUTING", "1", "-s", csqttTUNCIDR, "-m", "comment", "--comment", "WDTT_SKIP_CSQTT", "-j", "RETURN").Run()
 		natType = "MASQUERADE iptables ✅"
 		setupForwardRules(wgIface)
 	case commandExists("nft"):
@@ -42,7 +45,10 @@ func setupFullConeNAT(wgIface string) error {
 func setupNftNAT(extIface string) {
 	exec.Command("nft", "add", "table", "ip", "wdtt").Run()
 	exec.Command("nft", "add", "chain", "ip", "wdtt", "postrouting", "{ type nat hook postrouting priority 100; }").Run()
-	exec.Command("nft", "add", "rule", "ip", "wdtt", "postrouting", "ip", "saddr", wgServerCIDR, "oifname", extIface, "masquerade").Run()
+	// Не трогаем подсеть CSQTT; остальной 10.66.0.0/16 — WDTT.
+	exec.Command("nft", "add", "rule", "ip", "wdtt", "postrouting",
+		"ip", "saddr", wgServerCIDR, "ip", "saddr", "!=", csqttTUNCIDR,
+		"oifname", extIface, "masquerade").Run()
 }
 
 // setupRawNAT — NAT для raw-IP (без WireGuard) TUN-интерфейса. Полностью

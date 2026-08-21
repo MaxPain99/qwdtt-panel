@@ -188,6 +188,13 @@ func handleConn(ctx context.Context, clientConn net.Conn, wgEndpoint string, wgD
 				dev = &ClientDevice{DeviceID: deviceID, IP: getNextIP()}
 				setDeviceOwner(dev, password)
 			}
+			if ipInCSQTTTUN(dev.IP) {
+				old := dev.IP
+				dev.IP = getNextIP()
+				db.Devices[deviceID] = dev
+				saveDB()
+				log.Printf("[WG] IP %s в подсети CSQTT — переназначен на %s (%s)", old, dev.IP, deviceID)
+			}
 			// Устройство могло быть создано раньше только Raw-путём
 			// (GETCONF_RAW, см. handleConnRaw) — там PrivKey/PubKey никогда
 			// не генерируются, только IP/RawIP. Без этой проверки такое
@@ -196,7 +203,7 @@ func handleConn(ctx context.Context, clientConn net.Conn, wgEndpoint string, wgD
 			// клиенте при каждой попытке), потому что ветка ниже раньше
 			// генерировала ключи только для !exists.
 			if dev.PrivKey == "" || dev.PubKey == "" {
-				if dev.IP == "" {
+				if dev.IP == "" || ipInCSQTTTUN(dev.IP) {
 					dev.IP = getNextIP()
 				}
 				privB64, pubB64, keyErr := generateKeyPair()

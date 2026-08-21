@@ -398,6 +398,12 @@ func handleConnRaw(ctx context.Context, clientConn net.Conn, router *rawRouter) 
 			saveDB()
 		} else {
 			changed := false
+			if ipInCSQTTTUN(dev.IP) {
+				old := dev.IP
+				dev.IP = getNextIP()
+				changed = true
+				log.Printf("[RAW] IP %s в подсети CSQTT — переназначен на %s (%s)", old, dev.IP, deviceID)
+			}
 			if dev.OwnerID == "" {
 				setDeviceOwner(dev, password)
 				changed = true

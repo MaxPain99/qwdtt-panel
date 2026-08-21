@@ -8,6 +8,11 @@ const (
 	wgMTU                 = 1280
 	keepalive             = 25
 
+	// Подсеть TUN CSQTT (csqtt1). Лежит внутри wgServerCIDR /16 — не выдаём
+	// эти адреса клиентам qWDTT и не NAT’им их правилами WDTT_MANAGED.
+	csqttTUNSubnetThirdOctet = 67
+	csqttTUNCIDR             = "10.66.67.0/24"
+
 	// Raw-IP роутер (без WireGuard) — отдельный TUN/подсеть/NAT, полностью
 	// параллельно WG-пути. Подсеть намеренно не пересекается с wgServerCIDR.
 	rawIfaceName  = "wdttraw0"
