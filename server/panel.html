@@ -188,8 +188,10 @@ function fmt(n){
 }
 async function refresh(){
   const s = await api('/api/status');
+  const actHint = (Number(s.wdtt_active)||0) || (Number(s.csqtt_active)||0)
+    ? ` · q${s.wdtt_active||0}/c${s.csqtt_active||0}` : '';
   document.getElementById('stats').innerHTML = [
-    ['Активные', s.active],
+    ['Активные', (s.active||0) + actHint],
     ['Всего сессий', s.total],
     ['Аплинк', fmt(s.up_bytes)],
     ['Даунлинк', fmt(s.down_bytes)],

@@ -363,20 +363,31 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	socksOn, socksTCP, socksUDP, socksHealth := socksSnapshot()
 	csqtt := csqttCachedStatus()
-	csqttActive := 0
+	var csqttStats map[string]interface{}
 	if stats, ok := csqtt["stats"].(map[string]interface{}); ok {
-		switch n := stats["active"].(type) {
-		case float64:
-			csqttActive = int(n)
-		case int:
-			csqttActive = n
-		}
+		csqttStats = stats
 	}
+	// CSQTT /api/stats: active = sessions.len(), hot_sessions = живые потоки.
+	csqttActive := csqttStatNumber(csqttStats, "hot_sessions")
+	if csqttActive == 0 {
+		csqttActive = csqttStatNumber(csqttStats, "active")
+	}
+	csqttTotal := csqttStatNumber(csqttStats, "total")
+	csqttUp := csqttStatNumber(csqttStats, "up")
+	csqttDown := csqttStatNumber(csqttStats, "down")
+	wdttActive := int64(atomic.LoadInt32(&activeConns))
+	wdttTotal := atomic.LoadInt64(&totalConns)
+	wdttUp := atomic.LoadInt64(&totalBytesFromClient)
+	wdttDown := atomic.LoadInt64(&totalBytesToClient)
 	writePanelJSON(w, map[string]interface{}{
-		"active":         atomic.LoadInt32(&activeConns),
-		"total":          atomic.LoadInt64(&totalConns),
-		"up_bytes":       atomic.LoadInt64(&totalBytesFromClient),
-		"down_bytes":     atomic.LoadInt64(&totalBytesToClient),
+		"active":         wdttActive + csqttActive,
+		"total":          wdttTotal + csqttTotal,
+		"up_bytes":       wdttUp + csqttUp,
+		"down_bytes":     wdttDown + csqttDown,
+		"wdtt_active":    wdttActive,
+		"wdtt_total":     wdttTotal,
+		"wdtt_up":        wdttUp,
+		"wdtt_down":      wdttDown,
 		"uptime":         formatUptime(up),
 		"nat":            natType,
 		"logs_active":    panelLogsEnabled(),
@@ -387,9 +398,31 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 		"socks_ifaces":   socksIfaceNames(),
 		"csqtt_ok":       csqtt["connected"],
 		"csqtt_active":   csqttActive,
+		"csqtt_total":    csqttTotal,
+		"csqtt_up":       csqttUp,
+		"csqtt_down":     csqttDown,
 		"csqtt_error":    csqtt["error"],
 		"csqtt_iface_up": csqtt["iface_up"],
 	})
+}
+
+func csqttStatNumber(stats map[string]interface{}, key string) int64 {
+	if stats == nil {
+		return 0
+	}
+	switch n := stats[key].(type) {
+	case float64:
+		return int64(n)
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case json.Number:
+		v, _ := n.Int64()
+		return v
+	default:
+		return 0
+	}
 }
 
 func panelClientLink(pass, hash string) (wdtt string, qwdtt string) {

@@ -287,13 +287,23 @@ func csqttPanelState() map[string]interface{} {
 
 func csqttCachedStatus() map[string]interface{} {
 	csqttStatMu.Lock()
-	if time.Since(csqttStatAt) < 5*time.Second && csqttStatVal != nil {
+	if time.Since(csqttStatAt) < 2*time.Second && csqttStatVal != nil {
 		v := csqttStatVal
 		csqttStatMu.Unlock()
 		return v
 	}
 	stale := csqttStatVal
 	csqttStatMu.Unlock()
+	// Синхронно при первой загрузке / устаревшем кэше — иначе панель
+	// показывает нули, пока фоновый refresh не успел.
+	if stale == nil || time.Since(csqttStatAt) > 10*time.Second {
+		v := csqttPanelState()
+		csqttStatMu.Lock()
+		csqttStatVal = v
+		csqttStatAt = time.Now()
+		csqttStatMu.Unlock()
+		return v
+	}
 	go func() {
 		v := csqttPanelState()
 		csqttStatMu.Lock()
@@ -301,10 +311,7 @@ func csqttCachedStatus() map[string]interface{} {
 		csqttStatAt = time.Now()
 		csqttStatMu.Unlock()
 	}()
-	if stale != nil {
-		return stale
-	}
-	return map[string]interface{}{"connected": false, "error": "", "iface_up": csqttIfaceUp()}
+	return stale
 }
 
 func csqttIfaceUp() bool {
