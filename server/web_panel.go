@@ -942,14 +942,21 @@ func handlePanelUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method", http.StatusMethodNotAllowed)
 		return
 	}
+	_ = r.ParseForm()
+	target := strings.ToLower(strings.TrimSpace(r.FormValue("target")))
+	switch target {
+	case "qwdtt", "csqtt", "all":
+	default:
+		target = "all"
+	}
 	helper := "/usr/local/lib/qwdtt/update-server.sh"
 	if err := os.MkdirAll(filepath.Dir(helper), 0755); err == nil && updateServerScript != "" {
 		_ = os.WriteFile(helper, []byte(updateServerScript), 0755)
 	}
-	cmd := exec.Command("systemd-run", "--collect", "--no-block", helper)
+	cmd := exec.Command("systemd-run", "--collect", "--no-block", helper, target)
 	if err := cmd.Start(); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
-	writePanelJSON(w, map[string]bool{"ok": true})
+	writePanelJSON(w, map[string]interface{}{"ok": true, "target": target})
 }

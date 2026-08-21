@@ -311,8 +311,6 @@ code{
 <header>
   <div class="brand"><span class="brand-dot" aria-hidden="true"></span>qWDTT</div>
   <div class="top-actions">
-    <button class="btn btn-ghost btn-sm" type="button" onclick="upd()">GitHub update</button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="reboot()">Reboot</button>
     <button class="btn btn-ghost btn-sm" type="button" onclick="location.href='/logout'">Выйти</button>
   </div>
 </header>
@@ -389,21 +387,36 @@ code{
       </form>
     </div>
 
+    <div class="glass settings-block">
+      <h3 class="settings-pane-title">Обновление с GitHub</h3>
+      <p class="hint">Можно обновить модули по отдельности или оба сразу. Unit-файлы не переписываются. Лог: <code>/var/log/qwdtt-panel-update.log</code></p>
+      <div class="row" style="margin-bottom:10px">
+        <button class="btn" type="button" onclick="upd('qwdtt')">Обновить qWDTT</button>
+        <button class="btn btn-ghost" type="button" onclick="upd('csqtt')">Обновить CSQTT</button>
+        <button class="btn" type="button" onclick="upd('all')">Обновить оба</button>
+      </div>
+      <p class="hint" style="margin-bottom:8px"><b>qWDTT</b> — wdtt-server + qwdtt-panel из MaxPain99/qwdtt-panel.<br>
+      <b>CSQTT</b> — бинарник из amurcanov/csqtt (cargo) или <code>CSQTT_BIN_URL</code> / <code>/tmp/csqtt</code>.</p>
+      <div class="row">
+        <button class="btn btn-ghost" type="button" onclick="reboot()">Перезагрузить VPS</button>
+      </div>
+      <p id="upd-status" class="status-line off"></p>
+    </div>
+
     <div class="subtabs">
       <button type="button" class="subtab active" id="set-tab-qwdtt" onclick="showSettingsTab('qwdtt')">qWDTT</button>
       <button type="button" class="subtab" id="set-tab-csqtt" onclick="showSettingsTab('csqtt')">CSQTT</button>
     </div>
 
     <div id="settings-qwdtt" class="glass">
-      <h3 class="settings-pane-title">Обновление с GitHub</h3>
-      <p class="hint">Собирает <b>wdtt-server</b> и <b>qwdtt-panel</b> из репозитория MaxPain99/qwdtt-panel и перезапускает оба сервиса. Unit-файлы не переписывает.</p>
-      <button class="btn" type="button" onclick="upd()">Обновить сервер и панель</button>
+      <h3 class="settings-pane-title">qWDTT</h3>
+      <p class="hint">VPN и admin API — сервис <b>wdtt</b>. Панель — <b>qwdtt-panel</b>. Обновление модулей — в блоке «Обновление с GitHub» выше.</p>
     </div>
 
     <div id="settings-csqtt" class="glass" hidden>
       <h3 class="settings-pane-title">CSQTT</h3>
       <p id="csqtt-settings-status" class="status-line off"></p>
-      <p class="hint">Клиенты — во вкладке «Клиенты». DNS и главный пароль — в родной панели <b>:46002</b>. Общий SOCKS5 UDP (блок выше) покрывает и <b>csqtt1</b>: не включайте локальный SOCKS в панели CSQTT, иначе будет конфликт.</p>
+      <p class="hint">Клиенты — во вкладке «Клиенты». DNS и главный пароль — в родной панели <b>:46002</b>. Общий SOCKS5 UDP покрывает <b>csqtt1</b>. Обновление бинарника — кнопкой выше.</p>
       <div class="row" style="margin-top:12px">
         <a class="btn btn-ghost" id="csqtt-native-link" href="#" target="_blank" rel="noopener">Открыть панель CSQTT</a>
         <button class="btn btn-ghost" type="button" onclick="loadCsqttSettings()">Обновить статус</button>
@@ -809,10 +822,25 @@ async function socksOff(){
     await refresh();
   } catch (ex) { showSocksMsg('Не выключен: ' + (ex.message || ex), false); }
 }
-async function upd(){
-  if (!confirm('Собрать wdtt-server и qwdtt-panel с GitHub и перезапустить оба сервиса? Unit-файлы не меняются.')) return;
-  await api('/api/update-server', {method:'POST'});
-  alert('Обновление запущено. Через 1–2 минуты обновите страницу.');
+async function upd(target){
+  target = target || 'all';
+  const labels = {qwdtt:'qWDTT (сервер+панель)', csqtt:'CSQTT', all:'оба модуля (qWDTT + CSQTT)'};
+  const label = labels[target] || labels.all;
+  if (!confirm('Обновить с GitHub: '+label+'?\nUnit-файлы не меняются. Сборка CSQTT может занять несколько минут.')) return;
+  const st = document.getElementById('upd-status');
+  if (st) { st.className = 'status-line on'; st.textContent = 'Запущено: '+label+'…'; }
+  try {
+    await api('/api/update-server', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({target})
+    });
+    if (st) st.textContent = 'Обновление запущено ('+label+'). Через 1–5 мин обновите страницу. Лог: /var/log/qwdtt-panel-update.log';
+    alert('Обновление запущено ('+label+'). Через несколько минут обновите страницу.');
+  } catch (ex) {
+    if (st) { st.className = 'status-line bad'; st.textContent = ex.message || ex; }
+    alert(ex.message || ex);
+  }
 }
 async function reboot(){
   if (!confirm('Перезагрузить VPS?')) return;
