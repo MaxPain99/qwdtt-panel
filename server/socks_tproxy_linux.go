@@ -106,7 +106,7 @@ func socksActivate(p SocksProfile) error {
 	e.rulesOn.Store(true)
 	socksEng = e
 	go e.healthLoop()
-	log.Printf("[SOCKS] активен %s — трафик с %s на SOCKS5", socksDialAddr(p), strings.Join(socksIfaces(), ", "))
+	log.Printf("[SOCKS] активен %s — TCP+UDP с %s (qWDTT+CSQTT)", socksDialAddr(p), strings.Join(socksIfaceNames(), ", "))
 	return nil
 }
 
@@ -145,6 +145,7 @@ func socksRefreshIfaces() {
 func (e *socksEngine) healthLoop() {
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
+	tick := 0
 	for {
 		select {
 		case <-e.cancel:
@@ -153,6 +154,7 @@ func (e *socksEngine) healthLoop() {
 			if socksEng != e {
 				return
 			}
+			tick++
 			if socksPortOpen(e.profile) {
 				if !e.rulesOn.Load() {
 					if err := socksInstallIptables(); err == nil {
@@ -162,7 +164,13 @@ func (e *socksEngine) healthLoop() {
 					}
 				} else {
 					e.health = "ok"
+					// Держим TCP+UDP TPROXY на wdtt0/wdttraw0/csqtt1 и
+					// не даём CSQTT вернуть свой локальный SOCKS.
+					socksClearCsqttTproxy()
 					socksEnsureIfaces()
+					if tick%6 == 0 { // ~30с
+						_ = csqttDeactivateLocalProxy()
+					}
 				}
 				continue
 			}
@@ -448,15 +456,37 @@ func sendTransparentUDP(payload []byte, src, dst *net.UDPAddr) error {
 }
 
 func socksIfaceNames() []string {
-	return socksIfaces()
+	names := make([]string, 0, 3)
+	for _, t := range socksTunTargets() {
+		names = append(names, t.name)
+	}
+	return names
+}
+
+// socksTunTargets — оба форка: qWDTT (wdtt0/wdttraw0) и CSQTT (csqtt1).
+// Правила ставим всегда (даже если iface ещё нет) — match по имени при пакете.
+type socksTunTarget struct {
+	name   string
+	subnet string
+}
+
+func socksTunTargets() []socksTunTarget {
+	return []socksTunTarget{
+		{wgIfaceName, "10.66.66.0/24"},
+		{rawIfaceName, "10.70.0.0/16"},
+		{csqttTunIface, "10.66.67.0/24"},
+	}
 }
 
 func socksIfaces() []string {
-	out := []string{wgIfaceName}
-	for _, name := range []string{rawIfaceName, csqttTunIface} {
-		if _, err := os.Stat("/sys/class/net/" + name); err == nil {
-			out = append(out, name)
+	out := make([]string, 0, 3)
+	for _, t := range socksTunTargets() {
+		if _, err := os.Stat("/sys/class/net/" + t.name); err == nil {
+			out = append(out, t.name)
 		}
+	}
+	if len(out) == 0 {
+		return []string{wgIfaceName}
 	}
 	return out
 }
@@ -464,6 +494,11 @@ func socksIfaces() []string {
 func socksInstallNet() error {
 	_ = os.WriteFile("/proc/sys/net/ipv4/conf/all/route_localnet", []byte("1"), 0644)
 	_ = os.WriteFile("/proc/sys/net/ipv4/conf/lo/route_localnet", []byte("1"), 0644)
+	runCmdSilent("sysctl", "-w", "net.ipv4.conf.all.rp_filter=2")
+	for _, t := range socksTunTargets() {
+		runCmdSilent("sysctl", "-w", "net.ipv4.conf."+t.name+".rp_filter=2")
+		_ = os.WriteFile("/proc/sys/net/ipv4/conf/"+t.name+"/route_localnet", []byte("1"), 0644)
+	}
 	runCmdSilent("ip", "rule", "del", "fwmark", socksMarkHex, "lookup", socksTable)
 	if out, err := runCmd("ip", "rule", "add", "fwmark", socksMarkHex, "lookup", socksTable, "pref", socksRulePref); err != nil {
 		return fmt.Errorf("ip rule: %s", out)
@@ -479,21 +514,26 @@ func socksInstallIptables() error {
 	socksRemoveIptables()
 	socksClearCsqttTproxy()
 	port := strconv.Itoa(socksTproxyPort)
-	for _, iface := range socksIfaces() {
+	for _, t := range socksTunTargets() {
 		for _, proto := range []string{"tcp", "udp"} {
-			args := []string{"-t", "mangle", "-A", "PREROUTING",
-				"-i", iface, "-p", proto,
-				"-m", "addrtype", "!", "--dst-type", "LOCAL",
+			// Как CSQTT: -I PREROUTING 1 -i IFACE -s SUBNET -p tcp|udp → TPROXY
+			args := []string{"-t", "mangle", "-I", "PREROUTING", "1",
+				"-i", t.name, "-s", t.subnet, "-p", proto,
 				"-m", "comment", "--comment", socksComment,
 				"-j", "TPROXY", "--on-port", port, "--tproxy-mark", socksMarkSpec,
 			}
 			if out, err := runCmd("iptables", args...); err != nil {
-				return fmt.Errorf("iptables TPROXY %s %s: %s", iface, proto, out)
+				return fmt.Errorf("iptables TPROXY %s %s: %s", t.name, proto, out)
 			}
 		}
-		runCmdSilent("iptables", "-I", "INPUT", "-i", iface, "-m", "mark", "--mark", socksMarkSpec,
+		runCmdSilent("iptables", "-t", "raw", "-I", "PREROUTING", "1",
+			"-i", t.name, "-s", t.subnet,
+			"-m", "comment", "--comment", socksComment, "-j", "NOTRACK")
+		runCmdSilent("iptables", "-I", "INPUT", "-i", t.name, "-m", "mark", "--mark", socksMarkSpec,
 			"-m", "comment", "--comment", socksComment, "-j", "ACCEPT")
 	}
+	runCmdSilent("ip", "route", "flush", "cache")
+	log.Printf("[SOCKS] TPROXY TCP+UDP на %s", strings.Join(socksIfaceNames(), ", "))
 	return nil
 }
 
@@ -503,28 +543,34 @@ func socksEnsureIfaces() {
 		return
 	}
 	port := strconv.Itoa(socksTproxyPort)
-	for _, iface := range socksIfaces() {
+	for _, t := range socksTunTargets() {
 		for _, proto := range []string{"tcp", "udp"} {
 			check := []string{"-t", "mangle", "-C", "PREROUTING",
-				"-i", iface, "-p", proto,
-				"-m", "addrtype", "!", "--dst-type", "LOCAL",
+				"-i", t.name, "-s", t.subnet, "-p", proto,
 				"-m", "comment", "--comment", socksComment,
 				"-j", "TPROXY", "--on-port", port, "--tproxy-mark", socksMarkSpec,
 			}
 			if _, err := runCmd("iptables", check...); err != nil {
-				args := []string{"-t", "mangle", "-A", "PREROUTING",
-					"-i", iface, "-p", proto,
-					"-m", "addrtype", "!", "--dst-type", "LOCAL",
+				args := []string{"-t", "mangle", "-I", "PREROUTING", "1",
+					"-i", t.name, "-s", t.subnet, "-p", proto,
 					"-m", "comment", "--comment", socksComment,
 					"-j", "TPROXY", "--on-port", port, "--tproxy-mark", socksMarkSpec,
 				}
 				runCmdSilent("iptables", args...)
 			}
 		}
-		inCheck := []string{"-C", "INPUT", "-i", iface, "-m", "mark", "--mark", socksMarkSpec,
+		rawCheck := []string{"-t", "raw", "-C", "PREROUTING",
+			"-i", t.name, "-s", t.subnet,
+			"-m", "comment", "--comment", socksComment, "-j", "NOTRACK"}
+		if _, err := runCmd("iptables", rawCheck...); err != nil {
+			runCmdSilent("iptables", "-t", "raw", "-I", "PREROUTING", "1",
+				"-i", t.name, "-s", t.subnet,
+				"-m", "comment", "--comment", socksComment, "-j", "NOTRACK")
+		}
+		inCheck := []string{"-C", "INPUT", "-i", t.name, "-m", "mark", "--mark", socksMarkSpec,
 			"-m", "comment", "--comment", socksComment, "-j", "ACCEPT"}
 		if _, err := runCmd("iptables", inCheck...); err != nil {
-			runCmdSilent("iptables", "-I", "INPUT", "-i", iface, "-m", "mark", "--mark", socksMarkSpec,
+			runCmdSilent("iptables", "-I", "INPUT", "-i", t.name, "-m", "mark", "--mark", socksMarkSpec,
 				"-m", "comment", "--comment", socksComment, "-j", "ACCEPT")
 		}
 	}
@@ -535,16 +581,26 @@ func socksRemoveIptables() {
 		return
 	}
 	port := strconv.Itoa(socksTproxyPort)
+	targets := socksTunTargets()
 	for i := 0; i < 8; i++ {
-		for _, iface := range []string{wgIfaceName, rawIfaceName, csqttTunIface} {
+		for _, t := range targets {
 			for _, proto := range []string{"tcp", "udp"} {
+				// Новый формат (subnet)
 				runCmdSilent("iptables", "-t", "mangle", "-D", "PREROUTING",
-					"-i", iface, "-p", proto,
+					"-i", t.name, "-s", t.subnet, "-p", proto,
+					"-m", "comment", "--comment", socksComment,
+					"-j", "TPROXY", "--on-port", port, "--tproxy-mark", socksMarkSpec)
+				// Старый формат (addrtype) — миграция
+				runCmdSilent("iptables", "-t", "mangle", "-D", "PREROUTING",
+					"-i", t.name, "-p", proto,
 					"-m", "addrtype", "!", "--dst-type", "LOCAL",
 					"-m", "comment", "--comment", socksComment,
 					"-j", "TPROXY", "--on-port", port, "--tproxy-mark", socksMarkSpec)
 			}
-			runCmdSilent("iptables", "-D", "INPUT", "-i", iface, "-m", "mark", "--mark", socksMarkSpec,
+			runCmdSilent("iptables", "-t", "raw", "-D", "PREROUTING",
+				"-i", t.name, "-s", t.subnet,
+				"-m", "comment", "--comment", socksComment, "-j", "NOTRACK")
+			runCmdSilent("iptables", "-D", "INPUT", "-i", t.name, "-m", "mark", "--mark", socksMarkSpec,
 				"-m", "comment", "--comment", socksComment, "-j", "ACCEPT")
 		}
 	}

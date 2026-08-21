@@ -165,17 +165,12 @@ code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em;b
   </section>
 
   <section class="pane" id="pane-settings" hidden>
-    <div class="subtabs">
-      <button type="button" class="subtab active" id="set-tab-qwdtt" onclick="showSettingsTab('qwdtt')">qWDTT</button>
-      <button type="button" class="subtab" id="set-tab-csqtt" onclick="showSettingsTab('csqtt')">CSQTT</button>
-    </div>
-
-    <div id="settings-qwdtt" class="glass">
+    <div class="glass" style="margin-bottom:16px">
       <div class="proxy-head">
-        <h3>Локальный прокси SOCKS5 UDP</h3>
+        <h3>Общий SOCKS5 UDP — qWDTT и CSQTT</h3>
         <button class="info-btn" type="button" title="О SOCKS5 UDP" onclick="document.getElementById('socks-info').hidden=false" aria-label="Справка">?</button>
       </div>
-      <p class="hint">Один SOCKS5 на оба сервиса: трафик с <b>wdtt0</b>, <b>wdttraw0</b> и <b>csqtt1</b> уходит в Xray/sing-box (TCP и UDP). При включении свой SOCKS в панели CSQTT выключается. Перед включением проверяются TCP и UDP ASSOCIATE.</p>
+      <p class="hint">Один прокси на оба форка: TCP и UDP с <b>wdtt0</b> (qWDTT), <b>wdttraw0</b> и <b>csqtt1</b> (CSQTT) уходят в Xray/sing-box. При включении свой SOCKS в панели CSQTT гасится. Нужен инбаунд SOCKS/mixed с <b>UDP</b>.</p>
       <form id="socks-form" onsubmit="return enableSocks(event)">
         <div class="form-row">
           <div class="field"><label>Хост</label><input name="host" value="127.0.0.1" placeholder="127.0.0.1"></div>
@@ -191,7 +186,14 @@ code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em;b
         <p id="socks-port-status" class="status-line off"></p>
         <p id="serr" class="status-line off"></p>
       </form>
-      <hr style="border:0;border-top:1px solid var(--border);margin:22px 0">
+    </div>
+
+    <div class="subtabs">
+      <button type="button" class="subtab active" id="set-tab-qwdtt" onclick="showSettingsTab('qwdtt')">qWDTT</button>
+      <button type="button" class="subtab" id="set-tab-csqtt" onclick="showSettingsTab('csqtt')">CSQTT</button>
+    </div>
+
+    <div id="settings-qwdtt" class="glass">
       <h3 style="font-size:1rem;margin:0 0 8px">Обновление с GitHub</h3>
       <p class="hint">Собирает <b>wdtt-server</b> и <b>qwdtt-panel</b> из репозитория MaxPain99/qwdtt-panel и перезапускает оба сервиса. Unit-файлы не переписывает.</p>
       <button class="btn" type="button" onclick="upd()">Обновить сервер и панель</button>
@@ -200,7 +202,7 @@ code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em;b
     <div id="settings-csqtt" class="glass" hidden>
       <h3 style="font-size:1rem;margin:0 0 8px">CSQTT</h3>
       <p id="csqtt-settings-status" class="status-line off"></p>
-      <p class="hint">Клиенты CSQTT управляются во вкладке «Клиенты». DNS и главный пароль CSQTT — в родной панели на порту <b>46002</b>. Общий SOCKS5 UDP настраивается во вкладке «qWDTT» выше: при включении локальный прокси CSQTT отключается.</p>
+      <p class="hint">Клиенты — во вкладке «Клиенты». DNS и главный пароль — в родной панели <b>:46002</b>. Общий SOCKS5 UDP (блок выше) покрывает и <b>csqtt1</b>: не включайте локальный SOCKS в панели CSQTT, иначе будет конфликт.</p>
       <div class="row" style="margin-top:12px">
         <a class="btn btn-ghost" id="csqtt-native-link" href="#" target="_blank" rel="noopener">Открыть панель CSQTT</a>
         <button class="btn btn-ghost" type="button" onclick="loadCsqttSettings()">Обновить статус</button>
@@ -215,9 +217,9 @@ code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em;b
       <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('socks-info').hidden=true">Закрыть</button>
     </div>
     <ul class="proxy-info-list">
-      <li><strong>Зачем?</strong> Маршрутизировать трафик qWDTT и CSQTT в Xray, 3x-ui и другие панели (geoip/geosite и т.д.).</li>
-      <li><strong>Как работает?</strong> Панель передаёт TCP и UDP в локальный SOCKS5 через TPROXY. Если прокси недоступен — прямой выход с VPS.</li>
-      <li><strong>Как настроить?</strong> Создайте инбаунд SOCKS5 (или mixed) и <b>включите UDP</b>. Укажите тот же порт здесь и нажмите «Проверить TCP+UDP».</li>
+      <li><strong>Зачем?</strong> Маршрутизировать трафик <b>обоих</b> форков (qWDTT и CSQTT) в Xray, 3x-ui и другие панели.</li>
+      <li><strong>Как работает?</strong> TPROXY TCP+UDP с <b>wdtt0</b>, <b>wdttraw0</b> и <b>csqtt1</b> в один SOCKS5. Если прокси недоступен — прямой выход с VPS. Свой SOCKS CSQTT при этом выключается.</li>
+      <li><strong>Как настроить?</strong> Создайте инбаунд SOCKS5 (или mixed) и <b>включите UDP</b>. Укажите порт здесь и нажмите «Проверить TCP+UDP».</li>
     </ul>
     <div class="modal-actions">
       <button class="btn" type="button" onclick="document.getElementById('socks-info').hidden=true">Понятно</button>
@@ -532,7 +534,7 @@ async function loadSocks(){
   if (!err) return;
   if (d.on && d.listening) {
     err.className = 'status-line on';
-    err.textContent = 'SOCKS5 UDP включён — TCP '+(d.tcp||0)+', UDP '+(d.udp||0)+(d.ifaces&&d.ifaces.length?' · '+d.ifaces.join(', '):'');
+    err.textContent = 'SOCKS5 UDP для qWDTT+CSQTT — TCP '+(d.tcp||0)+', UDP '+(d.udp||0)+(d.ifaces&&d.ifaces.length?' · '+d.ifaces.join(', '):'');
   } else if (d.health && d.health !== 'ok' && d.health !== 'выкл' && d.health !== '') {
     err.className = 'status-line bad';
     err.textContent = d.health;
