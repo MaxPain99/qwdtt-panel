@@ -8,7 +8,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 set -euo pipefail
 
-readonly SCRIPT_VERSION="3.1"
+readonly SCRIPT_VERSION="3.2"
 readonly REPO_URL="${QWDTT_REPO:-https://github.com/MaxPain99/qwdtt-panel.git}"
 readonly REPO_BRANCH="${QWDTT_BRANCH:-master}"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
@@ -255,9 +255,20 @@ csqtt_host_gnu_target() {
     esac
 }
 
+# Upstream uring_io.rs кастует MSG_DONTWAIT в u32 (под musl). На glibc sendmmsg ждёт i32.
+patch_csqtt_gnu() {
+    local f="${CSQTT_SRC_DIR}/csqtt-uring/uring_io.rs"
+    [ -f "$f" ] || return 0
+    if grep -q 'MSG_DONTWAIT as u32' "$f" 2>/dev/null; then
+        sed -i 's/libc::MSG_DONTWAIT as u32/libc::MSG_DONTWAIT as _/g' "$f"
+        log_info "патч glibc: MSG_DONTWAIT as _ в uring_io.rs"
+    fi
+}
+
 build_csqtt_binary() {
     ensure_rust
     fetch_csqtt_sources
+    patch_csqtt_gnu
     # Upstream .cargo/config.toml по умолчанию тянет musl без zig/musl-gcc —
     # на VPS собираем под системный glibc (gnu), этого достаточно для systemd.
     local triple
