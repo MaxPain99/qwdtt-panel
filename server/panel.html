@@ -32,7 +32,8 @@ button.bad{background:#7f1d1d}
 input,textarea{width:100%;background:#0f1419;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px}
 label{display:block;margin:0 0 4px;color:var(--mut);font-size:.8rem}
 .field{margin:0 0 12px}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:center}
+.row > input{width:auto;flex:1;min-width:110px}
 pre{background:#0b0f14;padding:12px;border-radius:8px;overflow:auto;max-height:320px;font-size:12px}
 .link{font-size:12px;word-break:break-all;color:var(--mut)}
 .on{color:var(--ok)} .off{color:var(--mut)}
@@ -69,8 +70,34 @@ body.modal-open{overflow:hidden}
 <tbody id="clients"></tbody>
 </table>
 </div>
+<div class="sec">
+<h2>SOCKS5</h2>
+<button class="ghost" type="button" onclick="socksOff()">Выключить</button>
+</div>
+<p class="off">Трафик клиентов с TUN уходит в локальный SOCKS5 (Xray, sing-box). Если прокси не отвечает — выход с VPS напрямую. Порты WRAP не трогаются.</p>
+<form class="row" onsubmit="return addSocks(event)">
+<input name="name" placeholder="Имя">
+<input name="host" value="127.0.0.1" placeholder="127.0.0.1">
+<input name="port" type="number" min="1" max="65535" value="45000" placeholder="Порт" style="width:110px;flex:0">
+<input name="username" placeholder="Логин">
+<input name="password" type="password" placeholder="Пароль">
+<button type="submit">Добавить</button>
+</form>
+<p id="serr" class="off"></p>
+<div class="card" style="overflow:auto">
+<table>
+<thead><tr><th>Имя</th><th>Адрес</th><th>Статус</th><th></th></tr></thead>
+<tbody id="socks"></tbody>
+</table>
+</div>
+<div class="sec">
 <h2>Логи</h2>
-<button class="ghost" onclick="logs()">Обновить лог</button>
+<div class="row" style="margin:0">
+<button class="ghost" type="button" id="log-toggle" onclick="toggleLogs()">Выключить логи</button>
+<button class="ghost" type="button" onclick="clearLogs()">Очистить лог</button>
+<button class="ghost" type="button" onclick="logs()">Обновить лог</button>
+</div>
+</div>
 <pre id="log"></pre>
 </main>
 <div id="modal" class="modal" hidden onclick="if(event.target===this)closeCreate()">
@@ -150,6 +177,8 @@ async function refresh(){
     ['Даунлинк', fmt(s.down_bytes)],
     ['Uptime', s.uptime],
     ['NAT', s.nat],
+    ['SOCKS5', s.socks_on ? ('вкл TCP '+ (s.socks_tcp||0) +' UDP '+(s.socks_udp||0)) : 'выкл'],
+    ['Логи', s.logs_active ? 'вкл' : 'выкл'],
   ].map(([k,v])=>`<div class="card"><span>${k}</span><strong>${v}</strong></div>`).join('');
   const d = await api('/api/clients');
   clientRows = d.clients || [];
@@ -165,6 +194,8 @@ async function refresh(){
     <td>${c.owner?'':`<button class="bad" type="button" onclick="del(${i})">×</button>`}</td>
   </tr>`;
   }).join('');
+  await loadSocks();
+  await logs();
 }
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function copyField(i, key, btn){
@@ -273,6 +304,77 @@ async function del(i){
 async function logs(){
   const d = await api('/api/logs');
   document.getElementById('log').textContent = d.text || '';
+  const btn = document.getElementById('log-toggle');
+  if (btn) btn.textContent = d.active ? 'Выключить логи' : 'Включить логи';
+}
+async function toggleLogs(){
+  await api('/api/logs/toggle', {method:'POST'});
+  await logs();
+}
+async function clearLogs(){
+  if (!confirm('Очистить лог?')) return;
+  await api('/api/logs/clear', {method:'POST'});
+  await logs();
+}
+async function loadSocks(){
+  const d = await api('/api/socks');
+  const tb = document.getElementById('socks');
+  if (!tb) return;
+  const err = document.getElementById('serr');
+  if (d.health) {
+    err.className = d.on ? 'on' : 'off';
+    err.textContent = d.health === 'ok' ? (d.listening ? 'SOCKS слушает, TPROXY активен' : (d.on ? 'прокси не слушает — прямой выход' : '')) : d.health;
+  }
+  tb.innerHTML = (d.profiles||[]).map(p => {
+    const on = p.id === d.active_id && d.on;
+    return `<tr>
+      <td>${esc(p.name)}${on?' <small class="on">active</small>':''}</td>
+      <td><code>${esc(p.host||'127.0.0.1')}:${p.port||0}</code>${p.username?' <span class="off">auth</span>':''}</td>
+      <td>${on?'вкл':'выкл'}</td>
+      <td>
+        ${on?'':`<button class="ghost" type="button" onclick="socksOn('${p.id}')">Вкл</button>`}
+        <button class="bad" type="button" onclick="delSocks('${p.id}')">×</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="off">нет профилей — добавьте 127.0.0.1:45000</td></tr>';
+}
+async function addSocks(e){
+  e.preventDefault();
+  const err = document.getElementById('serr');
+  err.textContent = '';
+  try {
+    const body = new URLSearchParams(new FormData(e.target));
+    await api('/api/socks', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+    e.target.reset();
+    e.target.host.value = '127.0.0.1';
+    e.target.port.value = '45000';
+    await loadSocks();
+  } catch (ex) {
+    err.className = 'off';
+    err.style.color = 'var(--bad)';
+    err.textContent = ex.message || ex;
+  }
+  return false;
+}
+async function socksOn(id){
+  const err = document.getElementById('serr');
+  try {
+    await api('/api/socks/activate', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: new URLSearchParams({id})});
+    await loadSocks();
+  } catch (ex) {
+    err.className = 'off';
+    err.style.color = 'var(--bad)';
+    err.textContent = ex.message || ex;
+  }
+}
+async function socksOff(){
+  await api('/api/socks/deactivate', {method:'POST'});
+  await loadSocks();
+}
+async function delSocks(id){
+  if (!confirm('Удалить SOCKS-профиль?')) return;
+  await api('/api/socks/delete', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: new URLSearchParams({id})});
+  await loadSocks();
 }
 async function upd(){
   if (!confirm('Собрать wdtt-server с GitHub и перезапустить? Unit не трогаем.')) return;
@@ -284,7 +386,6 @@ async function reboot(){
   await api('/api/reboot', {method:'POST'});
 }
 refresh();
-logs();
 setInterval(refresh, 8000);
 </script>
 </body>

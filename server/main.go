@@ -80,6 +80,7 @@ func main() {
 				}
 			} else {
 				cancel()
+				socksDeactivate()
 				dbMutex.Lock()
 				flushRawDeviceTrafficLocked()
 				saveDB()
@@ -286,6 +287,7 @@ func main() {
 		}()
 	}
 
+	socksRestore()
 	log.Println("[SERVER] Готов")
 
 	for {

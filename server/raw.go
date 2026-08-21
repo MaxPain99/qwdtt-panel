@@ -191,6 +191,7 @@ func newRawRouter() (*rawRouter, error) {
 	r := &rawRouter{file: tunFile, sessions: make(map[string]*rawClientSessions)}
 	go r.downlinkLoop()
 	log.Printf("[RAW] TUN %s поднят (%s), MTU %d", rawIfaceName, rawServerCIDR, rawMTU)
+	socksRefreshIfaces()
 	return r, nil
 }
 

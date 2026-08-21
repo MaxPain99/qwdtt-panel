@@ -46,9 +46,21 @@ const (
 	panelStoreFile  = "panel.json"
 )
 
+type SocksProfile struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     uint16 `json:"port"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
 type panelFileStore struct {
-	WebUser  string `json:"web_user"`
-	PassHash string `json:"pass_hash"`
+	WebUser       string         `json:"web_user"`
+	PassHash      string         `json:"pass_hash"`
+	LoggingActive *bool          `json:"logging_active,omitempty"`
+	SocksProfiles []SocksProfile `json:"socks_profiles,omitempty"`
+	ActiveSocksID string         `json:"active_socks_id,omitempty"`
 }
 
 var (
@@ -57,6 +69,8 @@ var (
 	panelDir      string
 	panelSessMu   sync.Mutex
 	panelSessions = map[string]time.Time{}
+	panelStoreMu  sync.Mutex
+	panelStore    *panelFileStore
 )
 
 func hashPanelPass(user, pass string) [32]byte {
@@ -74,8 +88,12 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 		user = "admin"
 	}
 	storePath := filepath.Join(configDir, panelStoreFile)
+	st, _ := loadPanelStore(storePath)
+	if st == nil {
+		st = &panelFileStore{}
+	}
 	if pass == "" {
-		if st, err := loadPanelStore(storePath); err == nil && st.PassHash != "" {
+		if st.PassHash != "" {
 			user = st.WebUser
 			if decoded, err := hex.DecodeString(st.PassHash); err == nil && len(decoded) == 32 {
 				copy(panelPassHash[:], decoded)
@@ -87,10 +105,20 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	}
 	if pass != "" {
 		panelPassHash = hashPanelPass(user, pass)
-		_ = savePanelStore(storePath, user, panelPassHash)
 		_ = os.WriteFile(filepath.Join(configDir, "web.password"), []byte(pass+"\n"), 0600)
 	}
 	panelUser = user
+	st.WebUser = user
+	st.PassHash = hex.EncodeToString(panelPassHash[:])
+	if st.LoggingActive == nil {
+		on := true
+		st.LoggingActive = &on
+	}
+	panelStoreMu.Lock()
+	panelStore = st
+	panelStoreMu.Unlock()
+	initPanelLogging(configDir, *st.LoggingActive)
+	_ = persistPanelStore()
 
 	certPath := filepath.Join(configDir, panelCertFile)
 	keyPath := filepath.Join(configDir, panelKeyFile)
@@ -107,6 +135,12 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/clients", handlePanelClients)
 	mux.HandleFunc("/api/clients/delete", handlePanelDeleteClient)
 	mux.HandleFunc("/api/logs", handlePanelLogs)
+	mux.HandleFunc("/api/logs/clear", handlePanelLogsClear)
+	mux.HandleFunc("/api/logs/toggle", handlePanelLogsToggle)
+	mux.HandleFunc("/api/socks", handlePanelSocks)
+	mux.HandleFunc("/api/socks/delete", handlePanelSocksDelete)
+	mux.HandleFunc("/api/socks/activate", handlePanelSocksActivate)
+	mux.HandleFunc("/api/socks/deactivate", handlePanelSocksDeactivate)
 	mux.HandleFunc("/api/reboot", handlePanelReboot)
 	mux.HandleFunc("/api/update-server", handlePanelUpdate)
 
@@ -140,10 +174,23 @@ func loadPanelStore(path string) (*panelFileStore, error) {
 	return &st, nil
 }
 
-func savePanelStore(path, user string, hash [32]byte) error {
-	st := panelFileStore{WebUser: user, PassHash: hex.EncodeToString(hash[:])}
-	b, _ := json.Marshal(st)
-	return os.WriteFile(path, b, 0600)
+func persistPanelStore() error {
+	panelStoreMu.Lock()
+	defer panelStoreMu.Unlock()
+	return persistPanelStoreLocked()
+}
+
+func persistPanelStoreLocked() error {
+	if panelStore == nil || panelDir == "" {
+		return nil
+	}
+	panelStore.WebUser = panelUser
+	panelStore.PassHash = hex.EncodeToString(panelPassHash[:])
+	b, err := json.MarshalIndent(panelStore, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(panelDir, panelStoreFile), b, 0600)
 }
 
 func randomPanelPass() string {
@@ -307,13 +354,19 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 	if serverStartTime.IsZero() {
 		up = 0
 	}
+	socksOn, socksTCP, socksUDP, socksHealth := socksSnapshot()
 	writePanelJSON(w, map[string]interface{}{
-		"active":     atomic.LoadInt32(&activeConns),
-		"total":      atomic.LoadInt64(&totalConns),
-		"up_bytes":   atomic.LoadInt64(&totalBytesFromClient),
-		"down_bytes": atomic.LoadInt64(&totalBytesToClient),
-		"uptime":     formatUptime(up),
-		"nat":        natType,
+		"active":       atomic.LoadInt32(&activeConns),
+		"total":        atomic.LoadInt64(&totalConns),
+		"up_bytes":     atomic.LoadInt64(&totalBytesFromClient),
+		"down_bytes":   atomic.LoadInt64(&totalBytesToClient),
+		"uptime":       formatUptime(up),
+		"nat":          natType,
+		"logs_active":  panelLogsEnabled(),
+		"socks_on":     socksOn,
+		"socks_tcp":    socksTCP,
+		"socks_udp":    socksUDP,
+		"socks_health": socksHealth,
 	})
 }
 
@@ -570,8 +623,157 @@ func handlePanelLogs(w http.ResponseWriter, r *http.Request) {
 	if !requirePanelAuth(w, r) {
 		return
 	}
-	out, _ := exec.Command("journalctl", "-u", "wdtt", "-n", "200", "--no-pager").CombinedOutput()
-	writePanelJSON(w, map[string]string{"text": string(out)})
+	active := panelLogsEnabled()
+	text := panelLogText()
+	if !active && text == "" {
+		text = "логи выключены"
+	}
+	writePanelJSON(w, map[string]interface{}{
+		"text":   text,
+		"active": active,
+	})
+}
+
+func handlePanelLogsClear(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := panelLogsClear(); err != nil {
+		writePanelError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writePanelJSON(w, map[string]bool{"ok": true})
+}
+
+func handlePanelLogsToggle(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	v := strings.TrimSpace(r.FormValue("active"))
+	on := v == "1" || strings.EqualFold(v, "true") || v == "on"
+	if v == "" {
+		on = !panelLogsEnabled()
+	}
+	if err := panelLogsSet(on); err != nil {
+		writePanelError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writePanelJSON(w, map[string]bool{"ok": true, "active": on})
+}
+
+func handlePanelSocks(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method == http.MethodGet {
+		writePanelJSON(w, socksPanelState())
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	host := strings.TrimSpace(r.FormValue("host"))
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := uint16(45000)
+	if v := r.FormValue("port"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 65535 {
+			writePanelError(w, http.StatusBadRequest, "порт")
+			return
+		}
+		port = uint16(n)
+	}
+	if name == "" {
+		name = fmt.Sprintf("SOCKS %s:%d", host, port)
+	}
+	p := SocksProfile{
+		Name:     name,
+		Host:     host,
+		Port:     port,
+		Username: strings.TrimSpace(r.FormValue("username")),
+		Password: r.FormValue("password"),
+	}
+	if err := socksCreateProfile(p); err != nil {
+		writePanelError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writePanelJSON(w, socksPanelState())
+}
+
+func handlePanelSocksDelete(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	if err := socksDeleteProfile(r.FormValue("id")); err != nil {
+		writePanelError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writePanelJSON(w, socksPanelState())
+}
+
+func handlePanelSocksActivate(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	if err := socksActivateID(r.FormValue("id")); err != nil {
+		writePanelError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writePanelJSON(w, socksPanelState())
+}
+
+func handlePanelSocksDeactivate(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	socksDeactivate()
+	panelStoreMu.Lock()
+	if panelStore != nil {
+		panelStore.ActiveSocksID = ""
+	}
+	_ = persistPanelStoreLocked()
+	panelStoreMu.Unlock()
+	writePanelJSON(w, socksPanelState())
 }
 
 func handlePanelReboot(w http.ResponseWriter, r *http.Request) {
