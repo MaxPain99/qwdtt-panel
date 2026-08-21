@@ -47,8 +47,6 @@ const (
 )
 
 type SocksProfile struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
 	Host     string `json:"host"`
 	Port     uint16 `json:"port"`
 	Username string `json:"username,omitempty"`
@@ -59,6 +57,8 @@ type panelFileStore struct {
 	WebUser       string         `json:"web_user"`
 	PassHash      string         `json:"pass_hash"`
 	LoggingActive *bool          `json:"logging_active,omitempty"`
+	Socks         *SocksProfile  `json:"socks,omitempty"`
+	SocksOn       bool           `json:"socks_on,omitempty"`
 	SocksProfiles []SocksProfile `json:"socks_profiles,omitempty"`
 	ActiveSocksID string         `json:"active_socks_id,omitempty"`
 }
@@ -114,6 +114,7 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 		on := true
 		st.LoggingActive = &on
 	}
+	migratePanelSocks(st)
 	panelStoreMu.Lock()
 	panelStore = st
 	panelStoreMu.Unlock()
@@ -139,8 +140,6 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/logs/toggle", handlePanelLogsToggle)
 	mux.HandleFunc("/api/socks", handlePanelSocks)
 	mux.HandleFunc("/api/socks/check", handlePanelSocksCheck)
-	mux.HandleFunc("/api/socks/delete", handlePanelSocksDelete)
-	mux.HandleFunc("/api/socks/activate", handlePanelSocksActivate)
 	mux.HandleFunc("/api/socks/deactivate", handlePanelSocksDeactivate)
 	mux.HandleFunc("/api/reboot", handlePanelReboot)
 	mux.HandleFunc("/api/update-server", handlePanelUpdate)
@@ -690,7 +689,6 @@ func handlePanelSocks(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusBadRequest, "form")
 		return
 	}
-	name := strings.TrimSpace(r.FormValue("name"))
 	host := strings.TrimSpace(r.FormValue("host"))
 	if host == "" {
 		host = "127.0.0.1"
@@ -708,17 +706,8 @@ func handlePanelSocks(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusBadRequest, "укажите порт SOCKS5")
 		return
 	}
-	if name == "" {
-		name = fmt.Sprintf("SOCKS %s:%d", host, port)
-	}
-	p := SocksProfile{
-		Name:     name,
-		Host:     host,
-		Port:     port,
-		Username: strings.TrimSpace(r.FormValue("username")),
-		Password: r.FormValue("password"),
-	}
-	if err := socksCreateProfile(p); err != nil {
+	p := socksFormProfile(host, strings.TrimSpace(r.FormValue("username")), r.FormValue("password"), port)
+	if err := socksSaveAndEnable(p); err != nil {
 		writePanelError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -743,51 +732,8 @@ func handlePanelSocksCheck(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusBadRequest, "укажите порт")
 		return
 	}
-	p := SocksProfile{
-		Host:     host,
-		Port:     uint16(n),
-		Username: strings.TrimSpace(r.FormValue("username")),
-		Password: r.FormValue("password"),
-	}
+	p := socksFormProfile(host, strings.TrimSpace(r.FormValue("username")), r.FormValue("password"), uint16(n))
 	writePanelJSON(w, socksInspect(p))
-}
-
-func handlePanelSocksDelete(w http.ResponseWriter, r *http.Request) {
-	if !requirePanelAuth(w, r) {
-		return
-	}
-	if r.Method != http.MethodPost {
-		writePanelError(w, http.StatusMethodNotAllowed, "method")
-		return
-	}
-	if err := parsePanelForm(r); err != nil {
-		writePanelError(w, http.StatusBadRequest, "form")
-		return
-	}
-	if err := socksDeleteProfile(r.FormValue("id")); err != nil {
-		writePanelError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writePanelJSON(w, socksPanelState())
-}
-
-func handlePanelSocksActivate(w http.ResponseWriter, r *http.Request) {
-	if !requirePanelAuth(w, r) {
-		return
-	}
-	if r.Method != http.MethodPost {
-		writePanelError(w, http.StatusMethodNotAllowed, "method")
-		return
-	}
-	if err := parsePanelForm(r); err != nil {
-		writePanelError(w, http.StatusBadRequest, "form")
-		return
-	}
-	if err := socksActivateID(r.FormValue("id")); err != nil {
-		writePanelError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writePanelJSON(w, socksPanelState())
 }
 
 func handlePanelSocksDeactivate(w http.ResponseWriter, r *http.Request) {
@@ -798,13 +744,7 @@ func handlePanelSocksDeactivate(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusMethodNotAllowed, "method")
 		return
 	}
-	socksDeactivate()
-	panelStoreMu.Lock()
-	if panelStore != nil {
-		panelStore.ActiveSocksID = ""
-	}
-	_ = persistPanelStoreLocked()
-	panelStoreMu.Unlock()
+	socksTurnOff()
 	writePanelJSON(w, socksPanelState())
 }
 

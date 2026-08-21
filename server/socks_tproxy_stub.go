@@ -8,7 +8,7 @@ func socksSnapshot() (active bool, tcp, udp int, health string) {
 	return false, 0, 0, "только Linux"
 }
 
-func socksActivateID(id string) error {
+func socksActivate(p SocksProfile) error {
 	return errors.New("SOCKS5 TPROXY есть только на Linux")
 }
 

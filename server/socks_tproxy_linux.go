@@ -55,25 +55,22 @@ func socksSnapshot() (active bool, tcp, udp int, health string) {
 	return e.alive.Load(), int(e.tcpN.Load()), int(e.udpN.Load()), e.health
 }
 
-func socksActivateID(id string) error {
+func socksRestore() {
 	panelStoreMu.Lock()
-	p := socksFindProfileLocked(id)
-	if p == nil {
-		panelStoreMu.Unlock()
-		return errors.New("профиль не найден")
+	on := false
+	var p *SocksProfile
+	if panelStore != nil && panelStore.SocksOn && panelStore.Socks != nil && panelStore.Socks.Port != 0 {
+		on = true
+		cp := *panelStore.Socks
+		p = &cp
 	}
-	cp := *p
 	panelStoreMu.Unlock()
-	if err := socksActivate(cp); err != nil {
-		return err
+	if !on || p == nil {
+		return
 	}
-	panelStoreMu.Lock()
-	if panelStore != nil {
-		panelStore.ActiveSocksID = id
+	if err := socksActivate(*p); err != nil {
+		log.Printf("[SOCKS] не удалось восстановить: %v — прямой выход", err)
 	}
-	err := persistPanelStoreLocked()
-	panelStoreMu.Unlock()
-	return err
 }
 
 func socksActivate(p SocksProfile) error {
@@ -133,27 +130,6 @@ func socksDeactivate() {
 	}
 	e.health = "выкл"
 	log.Println("[SOCKS] выключен, выход с VPS напрямую")
-}
-
-func socksRestore() {
-	panelStoreMu.Lock()
-	id := ""
-	var p *SocksProfile
-	if panelStore != nil {
-		id = panelStore.ActiveSocksID
-		p = socksFindProfileLocked(id)
-		if p != nil {
-			cp := *p
-			p = &cp
-		}
-	}
-	panelStoreMu.Unlock()
-	if id == "" || p == nil {
-		return
-	}
-	if err := socksActivate(*p); err != nil {
-		log.Printf("[SOCKS] не удалось восстановить: %v — прямой выход", err)
-	}
 }
 
 func socksRefreshIfaces() {

@@ -1,13 +1,48 @@
 package main
 
-import (
-	"crypto/rand"
-	"encoding/hex"
-	"errors"
-	"fmt"
-)
+import "errors"
 
-func socksStoreCreate(p SocksProfile) error {
+func migratePanelSocks(st *panelFileStore) {
+	if st == nil {
+		return
+	}
+	if st.Socks != nil && st.Socks.Port != 0 {
+		if st.Socks.Host == "" {
+			st.Socks.Host = "127.0.0.1"
+		}
+		st.SocksProfiles = nil
+		st.ActiveSocksID = ""
+		return
+	}
+	if len(st.SocksProfiles) > 0 {
+		p := st.SocksProfiles[0]
+		if p.Host == "" {
+			p.Host = "127.0.0.1"
+		}
+		st.Socks = &p
+		if st.ActiveSocksID != "" {
+			st.SocksOn = true
+		}
+	}
+	st.SocksProfiles = nil
+	st.ActiveSocksID = ""
+}
+
+func socksFormProfile(host, user, pass string, port uint16) SocksProfile {
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if pass == "" {
+		panelStoreMu.Lock()
+		if panelStore != nil && panelStore.Socks != nil {
+			pass = panelStore.Socks.Password
+		}
+		panelStoreMu.Unlock()
+	}
+	return SocksProfile{Host: host, Port: port, Username: user, Password: pass}
+}
+
+func socksSaveAndEnable(p SocksProfile) error {
 	if p.Host == "" {
 		p.Host = "127.0.0.1"
 	}
@@ -18,112 +53,62 @@ func socksStoreCreate(p SocksProfile) error {
 	if !chk.Allow {
 		return errors.New(chk.Message)
 	}
-	b := make([]byte, 6)
-	if _, err := rand.Read(b); err != nil {
+	if err := socksActivate(p); err != nil {
 		return err
 	}
-	p.ID = hex.EncodeToString(b)
 	panelStoreMu.Lock()
 	defer panelStoreMu.Unlock()
 	if panelStore == nil {
 		return errors.New("нет panel.json")
 	}
-	if len(panelStore.SocksProfiles) >= 20 {
-		return fmt.Errorf("лимит 20 SOCKS-профилей")
-	}
-	for _, x := range panelStore.SocksProfiles {
-		host := x.Host
-		if host == "" {
-			host = "127.0.0.1"
-		}
-		if host == p.Host && x.Port == p.Port {
-			return fmt.Errorf("профиль на %s:%d уже есть", p.Host, p.Port)
-		}
-	}
-	panelStore.SocksProfiles = append(panelStore.SocksProfiles, p)
+	cp := p
+	panelStore.Socks = &cp
+	panelStore.SocksOn = true
+	panelStore.SocksProfiles = nil
+	panelStore.ActiveSocksID = ""
 	return persistPanelStoreLocked()
 }
 
-func socksCreateProfile(p SocksProfile) error {
-	return socksStoreCreate(p)
-}
-
-func socksFindProfileLocked(id string) *SocksProfile {
-	if panelStore == nil {
-		return nil
-	}
-	for i := range panelStore.SocksProfiles {
-		if panelStore.SocksProfiles[i].ID == id {
-			return &panelStore.SocksProfiles[i]
-		}
-	}
-	return nil
-}
-
-func socksStoreDelete(id string) error {
+func socksTurnOff() {
+	socksDeactivate()
 	panelStoreMu.Lock()
-	defer panelStoreMu.Unlock()
-	if panelStore == nil {
-		return errors.New("нет panel.json")
-	}
-	next := make([]SocksProfile, 0, len(panelStore.SocksProfiles))
-	found := false
-	for _, p := range panelStore.SocksProfiles {
-		if p.ID == id {
-			found = true
-			continue
-		}
-		next = append(next, p)
-	}
-	if !found {
-		return errors.New("профиль не найден")
-	}
-	panelStore.SocksProfiles = next
-	if panelStore.ActiveSocksID == id {
+	if panelStore != nil {
+		panelStore.SocksOn = false
 		panelStore.ActiveSocksID = ""
 	}
-	return persistPanelStoreLocked()
-}
-
-func socksDeleteProfile(id string) error {
-	panelStoreMu.Lock()
-	active := panelStore != nil && panelStore.ActiveSocksID == id
+	_ = persistPanelStoreLocked()
 	panelStoreMu.Unlock()
-	if active {
-		socksDeactivate()
-	}
-	return socksStoreDelete(id)
 }
 
 func socksPanelState() map[string]interface{} {
 	on, tcp, udp, health := socksSnapshot()
 	panelStoreMu.Lock()
-	profiles := []SocksProfile{}
-	activeID := ""
-	var probe *SocksProfile
-	if panelStore != nil {
-		profiles = append(profiles, panelStore.SocksProfiles...)
-		activeID = panelStore.ActiveSocksID
-		if p := socksFindProfileLocked(activeID); p != nil {
-			cp := *p
-			probe = &cp
+	host := "127.0.0.1"
+	var port uint16
+	user := ""
+	hasPass := false
+	if panelStore != nil && panelStore.Socks != nil {
+		if panelStore.Socks.Host != "" {
+			host = panelStore.Socks.Host
 		}
-	}
-	for i := range profiles {
-		profiles[i].Password = ""
+		port = panelStore.Socks.Port
+		user = panelStore.Socks.Username
+		hasPass = panelStore.Socks.Password != ""
 	}
 	panelStoreMu.Unlock()
 	listening := false
-	if probe != nil {
-		listening = socksPortOpen(*probe)
+	if port != 0 {
+		listening = socksPortOpen(SocksProfile{Host: host, Port: port})
 	}
 	return map[string]interface{}{
-		"profiles":  profiles,
-		"active_id": activeID,
-		"on":        on,
-		"tcp":       tcp,
-		"udp":       udp,
-		"health":    health,
-		"listening": listening,
+		"host":         host,
+		"port":         port,
+		"username":     user,
+		"has_password": hasPass,
+		"on":           on,
+		"tcp":          tcp,
+		"udp":          udp,
+		"health":       health,
+		"listening":    listening,
 	}
 }
