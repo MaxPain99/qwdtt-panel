@@ -42,7 +42,7 @@ pre{background:#0b0f14;padding:12px;border-radius:8px;overflow:auto;max-height:3
 .on{color:var(--ok)} .off{color:var(--mut)}
 h2{font-size:1rem;margin:22px 0 10px}
 .modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
-.modal[hidden]{display:none}
+.modal[hidden], [hidden]{display:none!important}
 .modal-card{background:var(--card);border:1px solid var(--line);border-radius:12px;width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:18px;box-shadow:0 16px 48px #0008}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
 .modal-head b{font-size:1.05rem}
@@ -128,25 +128,13 @@ body.modal-open{overflow:hidden}
         <label for="f-days">Срок, дни</label>
         <input id="f-days" name="days" type="number" min="1" max="365" value="30">
       </div>
-      <div class="field" id="peer-field" hidden>
-        <label for="f-peer">Порт CSQTT (peer)</label>
-        <input id="f-peer" name="dtls_port" type="number" min="1" max="65535" value="46000">
-      </div>
       <div class="field">
-        <label>VK hash</label>
-        <div class="hashes" id="hash-qwdtt">
+        <label>VK hash — до 4</label>
+        <div class="hashes">
           <input name="vk_hash1" placeholder="VK hash 1" required>
           <input name="vk_hash2" placeholder="VK hash 2 (необязательно)">
           <input name="vk_hash3" placeholder="VK hash 3 (необязательно)">
           <input name="vk_hash4" placeholder="VK hash 4 (необязательно)">
-        </div>
-        <div class="hashes" id="hash-csqtt" hidden>
-          <input name="c_vk_hash1" placeholder="VK hash 1">
-          <input name="c_vk_hash2" placeholder="VK hash 2 (необязательно)">
-          <input name="c_vk_hash3" placeholder="VK hash 3 (необязательно)">
-          <input name="c_vk_hash4" placeholder="VK hash 4 (необязательно)">
-          <input name="c_vk_hash5" placeholder="VK hash 5 (необязательно)">
-          <input name="c_vk_hash6" placeholder="VK hash 6 (необязательно)">
         </div>
       </div>
       <p id="cerr" class="off"></p>
@@ -274,18 +262,11 @@ function openCreate(){
   const err = document.getElementById('cerr');
   form.reset();
   form.days.value = '30';
-  if (form.dtls_port) form.dtls_port.value = '46000';
   err.textContent = '';
   err.className = 'off';
   form.hidden = false;
   document.getElementById('created').hidden = true;
   document.getElementById('modal-title').textContent = clientKind === 'csqtt' ? 'Новый клиент CSQTT' : 'Новый клиент qWDTT';
-  const csq = clientKind === 'csqtt';
-  document.getElementById('peer-field').hidden = !csq;
-  document.getElementById('hash-qwdtt').hidden = csq;
-  document.getElementById('hash-csqtt').hidden = !csq;
-  const req = document.querySelector('#hash-qwdtt input[name="vk_hash1"]');
-  if (req) req.required = !csq;
   modal.hidden = false;
   document.body.classList.add('modal-open');
   const first = form.querySelector('input[name="label"]');
@@ -304,15 +285,10 @@ async function create(e){
   err.textContent = '';
   try {
     const f = new FormData(e.target);
-    let hashes = [];
-    let path = '/api/clients';
-    if (clientKind === 'csqtt') {
-      hashes = [1,2,3,4,5,6].map(n => (f.get('c_vk_hash'+n)||'').trim()).filter(Boolean);
-      path = '/api/csqtt/clients';
-    } else {
-      hashes = [1,2,3,4].map(n => (f.get('vk_hash'+n)||'').trim()).filter(Boolean);
-    }
+    const hashes = [1,2,3,4].map(n => (f.get('vk_hash'+n)||'').trim()).filter(Boolean);
     if (!hashes.length) throw new Error('укажите VK hash');
+    if (hashes.length > 4) throw new Error('максимум 4 VK hash');
+    const path = clientKind === 'csqtt' ? '/api/csqtt/clients' : '/api/clients';
     const body = new URLSearchParams(f);
     body.set('vk_hash', hashes.join(','));
     const created = await api(path, {

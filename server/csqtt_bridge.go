@@ -402,20 +402,12 @@ func handlePanelCsqttClients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	peer := uint16(csqttDefaultPeer)
-	if v := r.FormValue("dtls_port"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > 65535 {
-			writePanelError(w, http.StatusBadRequest, "порт CSQTT")
-			return
-		}
-		peer = uint16(n)
-	}
 	payload := map[string]interface{}{
-		"name":      name,
-		"days":      days,
-		"hash":      hashes,
-		"dtls_port": peer,
-		"wg_port":   46001,
+		"name":       name,
+		"days":       days,
+		"hash":       hashes,
+		"dtls_port":  peer,
+		"wg_port":    46001,
 		"local_port": 0,
 	}
 	raw, status, err := csqttBr.do(http.MethodPost, "/api/clients", payload)
@@ -455,13 +447,13 @@ func parseCsqttVkHashes(r *http.Request) (string, error) {
 	if v := strings.TrimSpace(r.FormValue("vk_hash")); v != "" {
 		raw = append(raw, v)
 	}
-	for i := 1; i <= 6; i++ {
+	for i := 1; i <= 4; i++ {
 		if v := strings.TrimSpace(r.FormValue("vk_hash" + strconv.Itoa(i))); v != "" {
 			raw = append(raw, v)
 		}
 	}
 	seen := map[string]struct{}{}
-	out := make([]string, 0, 6)
+	out := make([]string, 0, 4)
 	for _, chunk := range raw {
 		for _, p := range strings.FieldsFunc(chunk, func(ru rune) bool {
 			return ru == ',' || ru == ';' || ru == '\n' || ru == '\r' || ru == '\t' || ru == ' '
@@ -476,8 +468,8 @@ func parseCsqttVkHashes(r *http.Request) (string, error) {
 			if len(p) < 16 {
 				return "", fmt.Errorf("VK hash слишком короткий")
 			}
-			if len(out) >= 6 {
-				return "", fmt.Errorf("максимум 6 VK hash для CSQTT")
+			if len(out) >= 4 {
+				return "", fmt.Errorf("максимум 4 VK hash")
 			}
 			seen[p] = struct{}{}
 			out = append(out, p)
