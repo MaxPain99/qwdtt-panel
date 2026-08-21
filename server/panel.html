@@ -124,6 +124,62 @@ header{
   border-color:rgba(45,212,191,.4);
 }
 
+.clients-toolbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  margin:0 0 16px;
+}
+.clients-toolbar .subtabs{margin:0}
+.subnet-hint{
+  color:var(--muted);font-size:.85rem;margin:0 0 14px;line-height:1.45;
+}
+.subnet-hint b{color:var(--text);font-weight:600}
+.client-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;
+}
+.client-card{
+  background:#fff;color:#0f172a;
+  border:1px solid rgba(15,23,42,.06);
+  border-radius:18px;padding:18px 18px 14px;
+  box-shadow:0 10px 28px rgba(15,23,42,.1);
+  display:flex;flex-direction:column;gap:12px;
+}
+.client-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.client-name{font-weight:700;font-size:1.05rem;letter-spacing:-.02em;word-break:break-word}
+.badge-active,.badge-off{
+  display:inline-flex;align-items:center;gap:6px;flex-shrink:0;
+  padding:5px 10px;border-radius:999px;font-size:.78rem;font-weight:600;
+}
+.badge-active{background:#e8f1ff;color:#0057d9}
+.badge-active::before{content:"";width:7px;height:7px;border-radius:50%;background:#0077ff}
+.badge-off{background:#f1f5f9;color:#64748b}
+.badge-off::before{content:"";width:7px;height:7px;border-radius:50%;background:#94a3b8}
+.client-field{display:flex;flex-direction:column;gap:5px}
+.client-field .k{font-size:.72rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.client-field .v{font-size:.95rem;color:#0f172a;font-weight:500}
+.key-box{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  background:#eef5ff;border-radius:10px;padding:8px 10px;
+  font-family:var(--font-mono);font-size:.88rem;color:#0b3d91;word-break:break-all;
+}
+.key-box button{margin-left:auto}
+.flow-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:28px;height:28px;padding:0 8px;border-radius:999px;
+  background:#f1f5f9;color:#334155;font-weight:700;font-size:.85rem;
+}
+.client-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;padding-top:10px;border-top:1px solid #eef2f7}
+.btn-blue{
+  background:#0077ff;color:#fff;box-shadow:0 6px 16px rgba(0,119,255,.28);
+}
+.btn-blue:hover{background:#0066dd;filter:none;color:#fff}
+.client-card .btn-ghost{
+  background:#f8fafc;color:#334155;border:1px solid #e2e8f0;
+}
+.client-card .btn-ghost:hover{background:#f1f5f9;border-color:#cbd5e1}
+.client-card .btn-bad{
+  background:#fff1f2;color:#be123c;border:1px solid #fecdd3;
+}
+
 main{padding:20px 0 48px}
 .pane[hidden],[hidden]{display:none!important}
 
@@ -335,26 +391,21 @@ code{
   </section>
 
   <section class="pane" id="pane-clients" hidden>
-    <div class="sec">
-      <h2>Клиенты</h2>
-      <div class="row">
+    <div class="clients-toolbar">
+      <div class="subtabs">
         <button type="button" class="subtab active" id="tab-qwdtt" onclick="showClientTab('qwdtt')">qWDTT</button>
         <button type="button" class="subtab" id="tab-csqtt" onclick="showClientTab('csqtt')">CSQTT</button>
-        <button type="button" class="btn" onclick="openCreate()">Создать</button>
       </div>
+      <button type="button" class="btn btn-blue" onclick="openCreate()">Создать доступ</button>
     </div>
-    <div id="clients-qwdtt" class="glass" style="overflow:auto">
-      <table>
-        <thead><tr><th>Имя</th><th>Пароль</th><th>Трафик</th><th>Устр.</th><th>Ссылка</th><th></th></tr></thead>
-        <tbody id="clients"></tbody>
-      </table>
+    <div id="clients-qwdtt">
+      <p class="subnet-hint">TUN qWDTT: <b>10.66.66.0/24</b> · CSQTT: <b>10.66.67.0/24</b> — подсети не пересекаются</p>
+      <div id="clients" class="client-grid"></div>
     </div>
-    <div id="clients-csqtt" class="glass" style="overflow:auto" hidden>
+    <div id="clients-csqtt" hidden>
       <p id="csqtt-status" class="status-line off"></p>
-      <table>
-        <thead><tr><th>Имя</th><th>Пароль</th><th>Трафик</th><th>Сессии</th><th>Ссылка</th><th></th></tr></thead>
-        <tbody id="csqtt-clients"></tbody>
-      </table>
+      <p class="subnet-hint">TUN CSQTT: <b>10.66.67.0/24</b> · qWDTT: <b>10.66.66.0/24</b> — подсети не пересекаются</p>
+      <div id="csqtt-clients" class="client-grid"></div>
     </div>
   </section>
 
@@ -417,7 +468,7 @@ code{
 
     <div id="settings-qwdtt" class="glass">
       <h3 class="settings-pane-title">qWDTT</h3>
-      <p class="hint">VPN и admin API — сервис <b>wdtt</b>. Панель — <b>qwdtt-panel</b>. Обновление модулей — в блоке «Обновление с GitHub» выше.</p>
+      <p class="hint">VPN и admin API — сервис <b>wdtt</b> (TUN <b>10.66.66.0/24</b>). Панель — <b>qwdtt-panel</b>. CSQTT использует <b>10.66.67.0/24</b> — без пересечения.</p>
     </div>
 
     <div id="settings-csqtt" class="glass" hidden>
@@ -548,6 +599,44 @@ function showSettingsTab(kind){
   if (!q) loadCsqttSettings();
 }
 
+function renderClientCard(c, i, kind){
+  const name = c.owner ? (kind === 'csqtt' ? (c.label || 'Главный пароль') : 'Главный пароль') : (c.label || 'клиент');
+  const active = !c.deactivated;
+  const exp = c.owner ? '—' : (c.expires ? esc(c.expires) : '∞ Бессрочно');
+  const flows = kind === 'csqtt' ? (c.sessions||0) : (c.active_devices||0);
+  const linkKey = kind === 'csqtt' ? 'csqtt_link' : 'qwdtt_link';
+  const delFn = kind === 'csqtt' ? `delCsqtt(${i})` : `del(${i})`;
+  const copyFn = kind === 'csqtt' ? 'copyCsqtt' : 'copyField';
+  return `<article class="client-card">
+    <div class="client-card-head">
+      <div class="client-name">${esc(name)}</div>
+      <span class="${active?'badge-active':'badge-off'}">${active?'Активно':'Выкл'}</span>
+    </div>
+    <div class="client-field">
+      <span class="k">Ключ (пароль)</span>
+      <div class="key-box">${esc(c.password)}
+        <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'password',this)">копировать</button>
+      </div>
+    </div>
+    <div class="client-field">
+      <span class="k">Срок действия</span>
+      <span class="v">${exp}</span>
+    </div>
+    <div class="client-field">
+      <span class="k">Трафик</span>
+      <span class="v">↑ ${fmt(c.up)} / ↓ ${fmt(c.down)}</span>
+    </div>
+    <div class="client-field">
+      <span class="k">${kind==='csqtt'?'Потоки':'Устройства'}</span>
+      <span class="flow-badge">${flows}${kind==='qwdtt' && c.max_devices ? '/'+c.max_devices : ''}</span>
+    </div>
+    <div class="client-actions">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'${linkKey}',this)">копировать ссылку</button>
+      ${c.owner ? '' : `<button class="btn btn-bad btn-sm" type="button" onclick="${delFn}">Удалить</button>`}
+    </div>
+  </article>`;
+}
+
 async function refresh(){
   const s = await api('/api/status');
   const actHint = (Number(s.wdtt_active)||0) || (Number(s.csqtt_active)||0)
@@ -565,18 +654,8 @@ async function refresh(){
   ].map(([k,v])=>`<div class="card"><span>${k}</span><strong>${v}</strong></div>`).join('');
   const d = await api('/api/clients');
   clientRows = d.clients || [];
-  document.getElementById('clients').innerHTML = clientRows.map((c,i) => {
-    const n = String(c.hashes||'').split(',').filter(Boolean).length;
-    const hashLine = c.owner ? '' : (n ? `<div class="off">${n===1?'1 хэш':n+' хэша'}</div>` : '');
-    return `<tr>
-    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'Неограничено')}</div>${hashLine}</td>
-    <td><code>${esc(c.password)}</code> <button class="btn btn-ghost btn-sm" type="button" onclick="copyField(${i},'password',this)">копировать</button></td>
-    <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
-    <td>${c.active_devices||0}/${c.max_devices||1}</td>
-    <td class="link">${esc(c.qwdtt_link||'')}<div><button class="btn btn-ghost btn-sm" type="button" onclick="copyField(${i},'qwdtt_link',this)">копировать</button></div></td>
-    <td>${c.owner?'':`<button class="btn btn-bad btn-sm" type="button" onclick="del(${i})">×</button>`}</td>
-  </tr>`;
-  }).join('');
+  document.getElementById('clients').innerHTML = clientRows.map((c,i) => renderClientCard(c, i, 'qwdtt')).join('')
+    || '<p class="subnet-hint">Пока нет клиентов qWDTT</p>';
 }
 
 function copyField(i, key, btn){
@@ -624,7 +703,7 @@ function openCreate(){
   document.getElementById('cerr').textContent = '';
   form.hidden = false;
   document.getElementById('created').hidden = true;
-  document.getElementById('modal-title').textContent = clientKind === 'csqtt' ? 'Новый клиент CSQTT' : 'Новый клиент qWDTT';
+  document.getElementById('modal-title').textContent = clientKind === 'csqtt' ? 'Новый доступ CSQTT' : 'Новый доступ qWDTT';
   document.getElementById('modal').hidden = false;
 }
 function closeCreate(){ document.getElementById('modal').hidden = true; }
@@ -699,18 +778,8 @@ async function loadCsqtt(){
 async function loadCsqttClients(){
   const d = await api('/api/csqtt/clients');
   csqttRows = d.clients || [];
-  document.getElementById('csqtt-clients').innerHTML = csqttRows.map((c,i) => {
-    const n = String(c.hashes||'').split(',').filter(Boolean).length;
-    const hashLine = c.owner ? '' : (n ? `<div class="off">${n===1?'1 хэш':n+' хэша'}</div>` : '');
-    return `<tr>
-    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'Неограничено')}</div>${hashLine}</td>
-    <td><code>${esc(c.password)}</code> <button class="btn btn-ghost btn-sm" type="button" onclick="copyCsqtt(${i},'password',this)">копировать</button></td>
-    <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
-    <td>${c.sessions||0}</td>
-    <td class="link">${esc(c.csqtt_link||'')}<div><button class="btn btn-ghost btn-sm" type="button" onclick="copyCsqtt(${i},'csqtt_link',this)">копировать</button></div></td>
-    <td>${c.owner?'':`<button class="btn btn-bad btn-sm" type="button" onclick="delCsqtt(${i})">×</button>`}</td>
-  </tr>`;
-  }).join('');
+  document.getElementById('csqtt-clients').innerHTML = csqttRows.map((c,i) => renderClientCard(c, i, 'csqtt')).join('')
+    || '<p class="subnet-hint">Пока нет клиентов CSQTT</p>';
 }
 function copyCsqtt(i, key, btn){
   copyText((csqttRows[i] && csqttRows[i][key]) || '').then(ok => flashBtn(btn, ok));
