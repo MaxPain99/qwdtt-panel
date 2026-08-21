@@ -29,6 +29,8 @@ button,input,textarea{font:inherit}
 button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
 button.bad{background:#7f1d1d}
+button:disabled{opacity:.45;cursor:not-allowed}
+#socks-port-status,#serr{min-height:1.4em;margin:8px 0 0;font-size:.95rem}
 input,textarea{width:100%;background:#0f1419;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px}
 label{display:block;margin:0 0 4px;color:var(--mut);font-size:.8rem}
 .field{margin:0 0 12px}
@@ -189,8 +191,6 @@ async function refresh(){
     <td>${c.owner?'':`<button class="bad" type="button" onclick="del(${i})">×</button>`}</td>
   </tr>`;
   }).join('');
-  await loadSocks();
-  await logs();
 }
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function copyField(i, key, btn){
@@ -315,48 +315,61 @@ async function loadSocks(){
   const d = await api('/api/socks');
   const f = document.getElementById('socks-form');
   const err = document.getElementById('serr');
-  if (f) {
+  if (f && !f.contains(document.activeElement)) {
     if (d.host) f.host.value = d.host;
     if (d.port) f.port.value = d.port;
     f.username.value = d.username || '';
-    if (d.has_password && !f.password.value) f.password.placeholder = 'сохранён';
+    if (d.has_password && !f.password.value) f.password.placeholder = 'пароль, если есть';
   }
   if (err) {
+    err.style.color = '';
     if (d.on && d.listening) {
       err.className = 'on';
-      err.textContent = 'вкл — TCP '+(d.tcp||0)+', UDP '+(d.udp||0);
-    } else if (d.health && d.health !== 'ok' && d.health !== 'выкл') {
+      err.textContent = 'SOCKS включён — TCP '+(d.tcp||0)+', UDP '+(d.udp||0);
+    } else if (d.health && d.health !== 'ok' && d.health !== 'выкл' && d.health !== '') {
       err.className = 'off';
       err.style.color = 'var(--bad)';
       err.textContent = d.health;
     } else {
       err.className = 'off';
-      err.style.color = '';
-      err.textContent = d.on ? '' : 'выкл — выход с VPS напрямую';
+      err.textContent = 'SOCKS выключен — выход с VPS напрямую';
     }
   }
+}
+function showSocksMsg(text, ok){
+  const el = document.getElementById('socks-port-status');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = ok ? 'on' : 'off';
+  el.style.color = ok ? 'var(--ok)' : (text ? 'var(--bad)' : '');
 }
 async function enableSocks(e){
   e.preventDefault();
   const err = document.getElementById('serr');
+  const btn = document.getElementById('socks-add');
   err.textContent = '';
+  showSocksMsg('включаю…', true);
+  if (btn) btn.disabled = true;
   try {
-    const chk = await inspectSocksForm(e.target);
-    if (!chk.allow) throw new Error(chk.message || 'порт нельзя использовать');
-    const body = new URLSearchParams(new FormData(e.target));
+    const f = e.target;
+    if (!(f.port.value||'').trim()) throw new Error('укажите порт');
+    const body = new URLSearchParams(new FormData(f));
     await api('/api/socks', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+    showSocksMsg('SOCKS включён', true);
     await loadSocks();
   } catch (ex) {
+    showSocksMsg('Не включён: ' + (ex.message || ex), false);
     err.className = 'off';
     err.style.color = 'var(--bad)';
     err.textContent = ex.message || ex;
   }
+  if (btn) btn.disabled = false;
   return false;
 }
 let portCheckTimer = 0;
 function schedulePortCheck(){
   clearTimeout(portCheckTimer);
-  portCheckTimer = setTimeout(checkSocksPort, 400);
+  portCheckTimer = setTimeout(checkSocksPort, 500);
 }
 function socksFormEl(){
   return document.getElementById('socks-form');
@@ -375,36 +388,29 @@ async function inspectSocksForm(form){
     body
   });
 }
-function setPortStatus(chk){
-  const el = document.getElementById('socks-port-status');
-  const btn = document.getElementById('socks-add');
-  if (!el) return;
-  if (!chk) {
-    el.textContent = '';
-    el.className = 'off';
-    if (btn) btn.disabled = false;
-    return;
-  }
-  el.textContent = chk.message || '';
-  el.className = chk.allow ? 'on' : 'off';
-  el.style.color = chk.allow ? 'var(--ok)' : 'var(--bad)';
-  if (btn) btn.disabled = !chk.allow;
-}
 async function checkSocksPort(){
   const f = socksFormEl();
   if (!f || !(f.port.value||'').trim()) {
-    setPortStatus(null);
+    showSocksMsg('укажите порт', false);
     return;
   }
+  showSocksMsg('проверяю порт…', true);
   try {
-    setPortStatus(await inspectSocksForm(f));
+    const chk = await inspectSocksForm(f);
+    showSocksMsg(chk.message || (chk.allow ? 'порт занят SOCKS5' : 'порт нельзя использовать'), !!chk.allow);
   } catch (ex) {
-    setPortStatus({allow:false, message: ex.message || ex});
+    showSocksMsg('ошибка проверки: ' + (ex.message || ex), false);
   }
 }
 async function socksOff(){
-  await api('/api/socks/deactivate', {method:'POST'});
-  await loadSocks();
+  showSocksMsg('выключаю…', true);
+  try {
+    await api('/api/socks/deactivate', {method:'POST'});
+    showSocksMsg('SOCKS выключен', true);
+    await loadSocks();
+  } catch (ex) {
+    showSocksMsg('Не выключен: ' + (ex.message || ex), false);
+  }
 }
 async function upd(){
   if (!confirm('Собрать wdtt-server с GitHub и перезапустить? Unit не трогаем.')) return;
@@ -416,7 +422,10 @@ async function reboot(){
   await api('/api/reboot', {method:'POST'});
 }
 refresh();
+loadSocks();
+logs();
 setInterval(refresh, 8000);
+setInterval(logs, 8000);
 </script>
 </body>
 </html>
