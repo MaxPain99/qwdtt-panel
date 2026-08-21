@@ -18,7 +18,7 @@ SOCKS5 один на оба туннеля: TPROXY с `wdtt0`, `wdttraw0` и `cs
 curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 ```
 
-Поднимаются `wdtt.service` (`:46102`) и `csqtt.service` (peer UDP `:46000`, web `:46002`, TUN `csqtt1`). Поднимаются `wdtt.service` (`:46102`) и CSQTT через **официальный** [`deploy.sh`](https://github.com/amurcanov/csqtt/blob/main/app/src/main/assets/deploy.sh) (peer UDP `:46000`, web `:46002`, TUN `csqtt1`) — тот же путь, что с Android-клиента. Бинарник: `/tmp/csqtt`, `CSQTT_BIN_URL`, уже стоящий `/usr/local/bin/csqtt`, иначе сборка из исходников (`CSQTT_BUILD=1`). Пропуск: `SKIP_CSQTT=1`. Учётки: `/etc/wdtt/credentials.txt`.
+Поднимаются `wdtt.service` (`:46102`) и CSQTT через официальный [`deploy.sh`](https://github.com/amurcanov/csqtt/blob/main/app/src/main/assets/deploy.sh) (peer UDP `:46000`, web `:46002`, TUN `csqtt1`) — тот же путь, что с Android-клиента. Бинарник: `/tmp/csqtt`, `CSQTT_BIN_URL`, уже стоящий `/usr/local/bin/csqtt`, иначе сборка из исходников (`CSQTT_BUILD=1`). Пропуск: `SKIP_CSQTT=1`. Учётки: `/etc/wdtt/credentials.txt`.
 
 Панель: `https://IP:46102` (self-signed). Запуск qWDTT — SpaceNeuroX `wdtt.service` плюс `-web-port 46102` и INPUT TCP 46102.
 
