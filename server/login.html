@@ -3,72 +3,64 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>qWDTT</title>
+<title>qWDTT / CSQTT</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#0a0e16;--panel:rgba(18,24,38,.88);--line:rgba(148,163,184,.14);
-  --text:#e8eef8;--muted:#8b9bb4;--acc:#0084ff;--acc-dim:rgba(0,132,255,.14);--bad:#fb7185;
-}
 *{box-sizing:border-box}
 body{
-  margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  font:16px/1.45 "DM Sans",system-ui,sans-serif;color:var(--text);
+  margin:0;min-height:100vh;display:flex;flex-direction:column;
+  font:16px/1.45 Manrope,system-ui,sans-serif;color:#eef3fb;
   background:
-    radial-gradient(780px 420px at 12% -8%, rgba(0,132,255,.18), transparent 55%),
-    radial-gradient(560px 320px at 100% 10%, rgba(56,189,248,.1), transparent 50%),
-    var(--bg);
-  padding:24px;
+    radial-gradient(800px 420px at 10% -5%, rgba(26,140,255,.2), transparent 55%),
+    linear-gradient(180deg,#0b0f17,#090d14);
 }
 .top{
-  position:fixed;top:0;left:0;right:0;
   display:flex;align-items:center;justify-content:space-between;
-  padding:14px 24px;background:rgba(248,250,252,.96);
-  border-bottom:1px solid rgba(15,23,42,.06);
+  padding:14px 22px;background:#f4f6f9;border-bottom:1px solid rgba(18,24,38,.06);
 }
-.brand{
-  font:800 1.25rem/1 Syne,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#0084ff;
-}
-.brand-ver{font-size:.85rem;font-weight:600;color:#0084ff}
+.brand{font-weight:800;font-size:1.25rem;letter-spacing:.04em;text-transform:uppercase;color:#1a8cff}
+.credit{font-weight:600;font-size:.86rem;color:#1a8cff}
+.wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:28px 16px}
 form{
-  width:min(400px,100%);padding:36px 32px;border-radius:22px;margin-top:48px;
-  background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(14px);
-  box-shadow:0 30px 80px rgba(0,0,0,.35);
+  width:min(400px,100%);padding:32px 28px;border-radius:22px;
+  background:#151c2b;border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 24px 60px rgba(0,0,0,.35);
 }
-h1{margin:0 0 8px;font:800 1.55rem/1.1 Syne,sans-serif;letter-spacing:-.03em;text-align:center}
-p{margin:0 0 26px;color:var(--muted);font-size:.92rem;text-align:center}
-label{display:block;margin:0 0 7px;font-size:.72rem;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+h1{margin:0 0 6px;font-size:1.5rem;font-weight:800;text-align:center}
+p{margin:0 0 22px;color:#8d9bb3;text-align:center;font-size:.92rem}
+label{display:block;margin:0 0 6px;font-size:.7rem;font-weight:700;color:#8d9bb3;letter-spacing:.05em;text-transform:uppercase}
 input{
-  width:100%;height:48px;margin:0 0 14px;padding:0 14px;border-radius:14px;
-  border:1px solid var(--line);background:rgba(8,12,22,.55);color:var(--text);outline:none;
+  width:100%;height:46px;margin:0 0 14px;padding:0 14px;border-radius:12px;
+  border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.25);color:#eef3fb;outline:none;
 }
-input:focus{border-color:rgba(0,132,255,.55);box-shadow:0 0 0 3px var(--acc-dim)}
+input:focus{border-color:#1a8cff;box-shadow:0 0 0 3px rgba(26,140,255,.16)}
 button{
-  margin-top:8px;width:100%;height:48px;border:0;border-radius:14px;cursor:pointer;
-  font-weight:700;color:#fff;background:#0084ff;
-  box-shadow:0 12px 28px rgba(0,132,255,.28);
+  width:100%;height:46px;margin-top:6px;border:0;border-radius:12px;cursor:pointer;
+  font-weight:800;color:#fff;background:#1a8cff;box-shadow:0 10px 24px rgba(26,140,255,.28);
 }
-button:hover{background:#006fdb}
-.err{color:var(--bad);min-height:1.2em;margin-top:12px;font-size:.9rem;text-align:center}
+button:hover{filter:brightness(1.05)}
+.err{color:#ff6b7a;min-height:1.2em;margin-top:12px;text-align:center;font-size:.9rem}
 </style>
 </head>
 <body>
 <div class="top">
   <div class="brand">qWDTT / CSQTT</div>
-  <span class="brand-ver">panel by MaxPain99</span>
+  <span class="credit">panel by MaxPain99</span>
 </div>
+<div class="wrap">
 <form method="post" action="/login">
-<h1>Вход</h1>
-<p>Панель управления qWDTT / CSQTT</p>
-<label>Логин</label>
-<input name="user" autocomplete="username" required>
-<label>Пароль</label>
-<input name="pass" type="password" autocomplete="current-password" required>
-<div class="err" id="e"></div>
-<button type="submit">Войти</button>
+  <h1>Вход</h1>
+  <p>Панель управления qWDTT / CSQTT</p>
+  <label>Логин</label>
+  <input name="user" autocomplete="username" required>
+  <label>Пароль</label>
+  <input name="pass" type="password" autocomplete="current-password" required>
+  <div class="err" id="e"></div>
+  <button type="submit">Войти</button>
 </form>
+</div>
 <script>
 if (location.search.indexOf('bad')>=0) document.getElementById('e').textContent='Неверный логин или пароль';
 </script>

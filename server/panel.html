@@ -3,522 +3,432 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>qWDTT</title>
+<title>qWDTT / CSQTT</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0a0e16;
-  --bg-glow:rgba(0,119,255,.14);
-  --surface:rgba(18,24,38,.78);
-  --surface-solid:#141b2a;
-  --surface-hover:rgba(40,56,84,.55);
-  --glass:rgba(16,22,36,.62);
-  --glass-border:rgba(148,163,184,.14);
-  --primary:#0084ff;
-  --primary-2:#3aa0ff;
-  --primary-ink:#fff;
-  --primary-glow:rgba(0,132,255,.32);
-  --text:#e8eef8;
-  --muted:#8b9bb4;
-  --border:rgba(148,163,184,.15);
-  --ok:#34d399;
-  --bad:#f87171;
-  --icon-bg:rgba(0,132,255,.12);
-  --shadow:0 12px 36px rgba(0,0,0,.38);
-  --radius:16px;
-  --radius-sm:10px;
-  --font-ui:"DM Sans",system-ui,sans-serif;
-  --font-display:"Syne",system-ui,sans-serif;
-  --font-mono:"JetBrains Mono",ui-monospace,monospace;
-  --header-bg:rgba(248,250,252,.96);
-  --header-text:#0f172a;
-  --nav-shell:#fff;
-  --nav-ink:#64748b;
-  --nav-ink-hover:#0f172a;
-  --card-client-bg:#fff;
-  --card-client-text:#0f172a;
+  --bg:#0b0f17;
+  --bg2:#121826;
+  --panel:#151c2b;
+  --panel-2:#1a2336;
+  --line:rgba(255,255,255,.08);
+  --text:#eef3fb;
+  --muted:#8d9bb3;
+  --blue:#1a8cff;
+  --blue-soft:rgba(26,140,255,.14);
+  --ok:#3dd68c;
+  --bad:#ff6b7a;
+  --header:#f4f6f9;
+  --ink:#121826;
+  --radius:18px;
+  --font:"Manrope",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --shadow:0 18px 40px rgba(0,0,0,.28);
 }
 html[data-theme="light"]{
-  --bg:#eef2f7;
-  --bg-glow:rgba(0,119,255,.08);
-  --surface:rgba(255,255,255,.9);
-  --surface-solid:#fff;
-  --surface-hover:rgba(0,132,255,.06);
-  --glass:rgba(255,255,255,.88);
-  --glass-border:rgba(15,23,42,.08);
-  --text:#0f172a;
-  --muted:#64748b;
-  --border:rgba(15,23,42,.1);
-  --icon-bg:rgba(0,132,255,.1);
-  --shadow:0 10px 28px rgba(15,23,42,.08);
-  --card-client-bg:#fff;
-  --card-client-text:#0f172a;
+  --bg:#e9eef6;
+  --bg2:#f7f9fc;
+  --panel:#ffffff;
+  --panel-2:#ffffff;
+  --line:rgba(18,24,38,.1);
+  --text:#121826;
+  --muted:#66758f;
+  --blue-soft:rgba(26,140,255,.1);
+  --shadow:0 14px 32px rgba(18,24,38,.08);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{color-scheme:dark}
 html[data-theme="light"]{color-scheme:light}
 body{
-  font:15px/1.5 var(--font-ui);
-  background:
-    radial-gradient(880px 480px at 10% -10%, var(--bg-glow), transparent 55%),
-    radial-gradient(720px 420px at 95% 0%, rgba(56,189,248,.1), transparent 48%),
-    var(--bg);
-  color:var(--text);
   min-height:100vh;
+  font:15px/1.45 var(--font);
+  color:var(--text);
+  background:
+    radial-gradient(900px 420px at 0% 0%, rgba(26,140,255,.16), transparent 55%),
+    radial-gradient(700px 380px at 100% 10%, rgba(56,189,248,.08), transparent 50%),
+    linear-gradient(180deg, var(--bg) 0%, #090d14 100%);
   -webkit-font-smoothing:antialiased;
-  transition:background .25s,color .2s;
 }
-a{color:var(--primary)}
-.shell{max-width:1120px;margin:0 auto;width:100%;padding:0 20px}
+button,input,textarea,select{font:inherit}
+a{color:var(--blue);text-decoration:none}
+[hidden]{display:none!important}
 
-header{
-  position:sticky;top:0;z-index:10;
-  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
-  padding:14px 24px;
-  background:var(--header-bg);
-  backdrop-filter:blur(14px);
-  -webkit-backdrop-filter:blur(14px);
-  border-bottom:1px solid rgba(15,23,42,.06);
-  box-shadow:0 1px 0 rgba(255,255,255,.55);
+.topbar{
+  position:sticky;top:0;z-index:20;
+  background:var(--header);
+  border-bottom:1px solid rgba(18,24,38,.06);
+}
+.topbar-inner{
+  max-width:1180px;margin:0 auto;
+  padding:14px 22px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
 }
 .brand{
-  font-family:var(--font-display);
-  font-weight:800;
-  font-size:1.4rem;
-  letter-spacing:.06em;
-  text-transform:uppercase;
-  color:#0084ff;
+  font-weight:800;font-size:1.35rem;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--blue);white-space:nowrap;
 }
-.brand-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.brand-ver{font-size:.85rem;font-weight:600;color:#0084ff;letter-spacing:.01em}
-.theme-btn{
-  width:36px;height:36px;border-radius:999px;border:1px solid rgba(15,23,42,.08);
-  background:#fff;color:#0084ff;cursor:pointer;
-  display:inline-flex;align-items:center;justify-content:center;padding:0;
+.top-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.credit{color:var(--blue);font-weight:600;font-size:.86rem}
+.icon-btn{
+  width:36px;height:36px;border-radius:50%;
+  border:1px solid rgba(18,24,38,.1);background:#fff;color:var(--blue);
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
 }
-.theme-btn:hover{background:#f1f5f9}
-.theme-btn svg{width:18px;height:18px}
-.top-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.top-actions .btn-ghost{
-  background:#fff;color:#334155;border:1px solid rgba(15,23,42,.1);box-shadow:none;
+.icon-btn svg{width:18px;height:18px}
+.logout{
+  height:36px;padding:0 14px;border-radius:10px;cursor:pointer;
+  border:1px solid rgba(18,24,38,.12);background:#fff;color:var(--ink);font-weight:600;
 }
-.top-actions .btn-ghost:hover{background:#f8fafc;border-color:rgba(0,132,255,.35);color:#0084ff}
+.logout:hover{border-color:rgba(26,140,255,.35);color:var(--blue)}
 
-.nav-rail{
-  display:inline-flex;gap:0;flex-wrap:nowrap;align-items:center;
-  padding:5px;
-  margin:20px auto 0;
-  max-width:calc(100% - 40px);
-  width:fit-content;
-  background:var(--nav-shell);
-  border:1px solid rgba(15,23,42,.06);
-  border-radius:999px;
-  box-shadow:0 8px 28px rgba(15,23,42,.14);
-  overflow-x:auto;
-  -webkit-overflow-scrolling:touch;
-}
-.tab-btn{
-  border:0;background:transparent;color:var(--nav-ink);
-  padding:11px 22px;border-radius:999px;
-  font:inherit;font-size:15px;font-weight:600;cursor:pointer;
-  white-space:nowrap;
-  transition:background .18s,color .18s,box-shadow .18s;
-}
-.tab-btn:hover{color:var(--nav-ink-hover);background:rgba(15,23,42,.04)}
-.tab-btn.active{
-  color:#fff;background:var(--primary);
-  box-shadow:0 4px 14px var(--primary-glow);
-}
-.tab-btn.active:hover{color:#fff;background:#006fdb}
+.page{max-width:1180px;margin:0 auto;padding:18px 22px 48px}
 
-.subtabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
-.subtab{
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.03);
-  color:var(--muted);
-  padding:8px 16px;border-radius:999px;
-  font:inherit;font-weight:600;cursor:pointer;
-  transition:background .18s,color .18s,border-color .18s;
+.nav-wrap{display:flex;justify-content:center;margin:4px 0 22px}
+.nav{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:5px;border-radius:999px;background:#fff;
+  box-shadow:0 10px 30px rgba(0,0,0,.18);
+  max-width:100%;overflow-x:auto;
 }
-html[data-theme="light"] .subtab{background:#fff}
-.subtab:hover{color:var(--text);border-color:rgba(0,132,255,.35)}
-.subtab.active{
-  background:var(--icon-bg);
-  color:var(--primary);
-  border-color:rgba(0,132,255,.4);
+.nav-btn{
+  border:0;background:transparent;color:#66758f;
+  padding:11px 20px;border-radius:999px;font-weight:700;cursor:pointer;white-space:nowrap;
 }
+.nav-btn:hover{color:var(--ink);background:rgba(18,24,38,.04)}
+.nav-btn.active{background:var(--blue);color:#fff;box-shadow:0 6px 16px rgba(26,140,255,.35)}
 
-.clients-toolbar{
+.grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+}
+@media (max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.grid{grid-template-columns:1fr}}
+
+.stat{
+  background:linear-gradient(180deg, var(--panel-2), var(--panel));
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:16px 18px;
+  min-height:96px;
+  box-shadow:var(--shadow);
+  position:relative;overflow:hidden;
+}
+.stat::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--blue);opacity:.85;
+}
+.stat .k{
+  display:block;color:var(--muted);font-size:.72rem;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;
+}
+.stat .v{font-size:1.2rem;font-weight:800;letter-spacing:-.02em;word-break:break-word}
+
+.toolbar{
   display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  margin:0 0 16px;
+  margin-bottom:14px;
 }
-.clients-toolbar .subtabs{margin:0}
-.subnet-hint{color:var(--muted);font-size:.85rem;margin:0 0 14px;line-height:1.45}
-.subnet-hint b{color:var(--text);font-weight:600}
+.pills{display:inline-flex;gap:6px;padding:4px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+html[data-theme="light"] .pills{background:#fff}
+.pill{
+  border:0;background:transparent;color:var(--muted);
+  padding:8px 14px;border-radius:999px;font-weight:700;cursor:pointer;
+}
+.pill.active{background:var(--blue-soft);color:var(--blue)}
+.hint{color:var(--muted);font-size:.88rem;margin:0 0 14px;line-height:1.5}
+.hint b{color:var(--text)}
+
 .client-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .client-card{
-  background:var(--card-client-bg);color:var(--card-client-text);
-  border:1px solid rgba(15,23,42,.06);
-  border-radius:18px;padding:18px 18px 14px;
-  box-shadow:0 10px 28px rgba(15,23,42,.1);
+  background:#fff;color:#121826;
+  border-radius:18px;padding:18px;
+  box-shadow:0 12px 28px rgba(0,0,0,.16);
   display:flex;flex-direction:column;gap:12px;
 }
-.client-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.client-name{font-weight:700;font-size:1.05rem;letter-spacing:-.02em;word-break:break-word}
-.badge-active,.badge-off{
-  display:inline-flex;align-items:center;gap:6px;flex-shrink:0;
-  padding:5px 10px;border-radius:999px;font-size:.78rem;font-weight:600;
+.client-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.client-name{font-weight:800;font-size:1.05rem;word-break:break-word}
+.badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 10px;border-radius:999px;font-size:.75rem;font-weight:700;flex-shrink:0;
 }
-.badge-active{background:#e8f1ff;color:#0057d9}
-.badge-active::before{content:"";width:7px;height:7px;border-radius:50%;background:#0084ff}
-.badge-off{background:#f1f5f9;color:#64748b}
-.badge-off::before{content:"";width:7px;height:7px;border-radius:50%;background:#94a3b8}
-.client-field{display:flex;flex-direction:column;gap:5px}
-.client-field .k{font-size:.72rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
-.client-field .v{font-size:.95rem;color:#0f172a;font-weight:500}
+.badge.on{background:#e8f2ff;color:#0b63c7}
+.badge.on::before,.badge.off::before{content:"";width:7px;height:7px;border-radius:50%}
+.badge.on::before{background:var(--blue)}
+.badge.off{background:#eef2f7;color:#66758f}
+.badge.off::before{background:#94a3b8}
+.field-k{font-size:.7rem;font-weight:700;color:#66758f;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+.field-v{font-weight:600}
 .key-box{
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   background:#eef5ff;border-radius:10px;padding:8px 10px;
-  font-family:var(--font-mono);font-size:.88rem;color:#0b3d91;word-break:break-all;
+  font-family:var(--mono);font-size:.86rem;color:#0b3d91;word-break:break-all;
 }
-.key-box button{margin-left:auto}
-.flow-badge{
-  display:inline-flex;align-items:center;justify-content:center;
-  min-width:28px;height:28px;padding:0 8px;border-radius:999px;
-  background:#f1f5f9;color:#334155;font-weight:700;font-size:.85rem;
+.key-box .btn{margin-left:auto}
+.flow{
+  display:inline-flex;min-width:28px;height:28px;padding:0 8px;align-items:center;justify-content:center;
+  border-radius:999px;background:#eef2f7;font-weight:800;font-size:.85rem;
 }
-.client-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;padding-top:10px;border-top:1px solid #eef2f7}
-.btn-blue{background:var(--primary);color:#fff;box-shadow:0 6px 16px var(--primary-glow)}
-.btn-blue:hover{background:#006fdb;filter:none;color:#fff}
-.client-card .btn-ghost{background:#f8fafc;color:#334155;border:1px solid #e2e8f0}
-.client-card .btn-ghost:hover{background:#f1f5f9;border-color:#cbd5e1}
-.client-card .btn-bad{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}
-
-main{padding:20px 0 48px}
-.pane[hidden],[hidden]{display:none!important}
-
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:8px}
-.card{
-  background:var(--glass);
-  border:1px solid var(--glass-border);
-  border-radius:var(--radius);
-  padding:16px 18px;
-  box-shadow:var(--shadow);
-  backdrop-filter:blur(12px);
-  -webkit-backdrop-filter:blur(12px);
-  transition:transform .2s ease, border-color .2s, box-shadow .2s;
-}
-.card:hover{
-  transform:translateY(-2px);
-  border-color:rgba(0,132,255,.35);
-  box-shadow:0 16px 36px rgba(0,0,0,.35), 0 0 0 1px rgba(0,132,255,.08);
-}
-.card > span{
-  display:block;color:var(--muted);font-size:.72rem;font-weight:600;
-  text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;
-}
-.card > strong{
-  font-family:var(--font-display);
-  font-size:1.15rem;font-weight:700;letter-spacing:-.02em;
-  word-break:break-word;
+.client-actions{
+  display:flex;gap:8px;flex-wrap:wrap;padding-top:10px;margin-top:2px;
+  border-top:1px solid #e8edf5;
 }
 
-.sec{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 16px;flex-wrap:wrap}
-.sec h2{font-family:var(--font-display);font-size:1.15rem;font-weight:700;letter-spacing:-.02em}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:40px;padding:0 16px;border-radius:12px;border:0;cursor:pointer;
+  background:var(--blue);color:#fff;font-weight:700;
+  box-shadow:0 8px 18px rgba(26,140,255,.28);
+}
+.btn:hover{filter:brightness(1.05)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.btn-ghost{
+  background:transparent;color:var(--text);border:1px solid var(--line);box-shadow:none;
+}
+.btn-ghost:hover{border-color:rgba(26,140,255,.4);color:var(--blue)}
+.client-card .btn-ghost{background:#f7f9fc;color:#334155;border-color:#e2e8f0}
+.btn-bad{background:#fff1f3;color:#c81e3a;border:1px solid #fecdd3;box-shadow:none}
+.btn-sm{min-height:32px;padding:0 10px;font-size:.84rem;border-radius:9px}
 
-.glass{
-  background:var(--glass);
-  border:1px solid var(--glass-border);
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
   border-radius:20px;
   padding:20px;
   box-shadow:var(--shadow);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
+  margin-bottom:14px;
 }
+.panel h2,.panel h3{
+  font-size:1.05rem;font-weight:800;margin:0 0 8px;letter-spacing:-.02em;
+}
+.panel-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.panel-head h3{margin:0}
+.info{
+  width:28px;height:28px;border-radius:50%;border:1px solid var(--line);
+  background:transparent;color:var(--muted);cursor:pointer;font-weight:800;
+}
+.info:hover{color:var(--blue);border-color:var(--blue)}
 
-button,input,textarea,select{font:inherit}
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  min-height:40px;padding:8px 16px;
-  border-radius:12px;border:0;cursor:pointer;font-weight:600;
-  background:var(--primary);
-  color:var(--primary-ink);
-  box-shadow:0 6px 18px var(--primary-glow);
-  transition:transform .15s,filter .15s,box-shadow .15s,background .15s;
-}
-.btn:hover{filter:brightness(1.05);transform:translateY(-1px);background:#006fdb}
-.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:none}
-.btn-ghost{
-  background:rgba(255,255,255,.04);
-  color:var(--text);
-  border:1px solid var(--border);
-  box-shadow:none;
-}
-html[data-theme="light"] .btn-ghost{background:#fff}
-.btn-ghost:hover{background:var(--surface-hover);border-color:rgba(0,132,255,.35);filter:none}
-.btn-bad{
-  background:rgba(248,113,113,.15);
-  color:#fecaca;
-  border:1px solid rgba(248,113,113,.3);
-  box-shadow:none;
-}
-html[data-theme="light"] .btn-bad{color:#be123c;background:#fff1f2;border-color:#fecdd3}
-.btn-bad:hover{background:rgba(248,113,113,.25);filter:none}
-.btn-sm{min-height:32px;padding:4px 10px;font-size:.85rem;border-radius:8px}
-
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.field{margin:0 0 14px}
+.form-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:800px){.form-row{grid-template-columns:1fr 1fr}}
+@media (max-width:480px){.form-row{grid-template-columns:1fr}}
+.field{margin:0 0 12px}
 .field label{
   display:block;margin:0 0 6px;color:var(--muted);
-  font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+  font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
 }
-.field input,.field textarea{
-  width:100%;height:44px;
-  background:rgba(7,11,18,.65);
-  border:1px solid var(--border);
-  border-radius:12px;padding:0 12px;color:var(--text);outline:none;
-  transition:border-color .15s,box-shadow .15s;
+.field input{
+  width:100%;height:44px;border-radius:12px;padding:0 12px;
+  border:1px solid var(--line);background:rgba(0,0,0,.25);color:var(--text);outline:none;
 }
-html[data-theme="light"] .field input{
-  background:#fff;color:#0f172a;border-color:rgba(15,23,42,.12);
-}
-.field input:focus{
-  border-color:var(--primary);
-  box-shadow:0 0 0 4px rgba(0,132,255,.15);
-}
-.field input::placeholder{color:#5a6b82}
-.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+html[data-theme="light"] .field input{background:#fff}
+.field input:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.status{min-height:1.3em;margin-top:10px;font-size:.9rem}
+.on{color:var(--ok)}.off{color:var(--muted)}.bad{color:var(--bad)}
 
-.hint{color:var(--muted);font-size:.9rem;line-height:1.55;margin:0 0 14px}
-.hint b{color:var(--text)}
-.on{color:var(--ok)} .off{color:var(--muted)} .bad{color:var(--bad)}
-
-pre{
-  background:rgba(4,8,14,.85);
-  color:#cbd5e1;
-  padding:16px;border-radius:16px;overflow:auto;max-height:420px;
-  font:12.5px/1.55 var(--font-mono);
-  border:1px solid var(--border);
+.update-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+@media (max-width:700px){.update-grid{grid-template-columns:1fr}}
+.update-card{
+  background:rgba(255,255,255,.03);
+  border:1px solid var(--line);
+  border-radius:16px;padding:14px;
 }
-html[data-theme="light"] pre{background:#0f172a;color:#e2e8f0}
-.link{font-size:12px;word-break:break-all;color:var(--muted);font-family:var(--font-mono)}
+html[data-theme="light"] .update-card{background:#f7f9fc}
+.update-card h4{margin:0 0 6px;font-size:.92rem}
+.update-card p{margin:0 0 12px;color:var(--muted);font-size:.84rem;line-height:1.45}
 code{
-  font-family:var(--font-mono);
-  font-size:.88em;
-  background:var(--icon-bg);
-  color:var(--primary);
-  padding:2px 7px;border-radius:6px;
+  font-family:var(--mono);font-size:.84em;
+  background:var(--blue-soft);color:var(--blue);
+  padding:2px 6px;border-radius:6px;
 }
 
-.proxy-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.proxy-head h3{font-family:var(--font-display);font-size:1.05rem;margin:0;letter-spacing:-.02em}
-.info-btn{
-  width:28px;height:28px;border-radius:50%;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.04);
-  color:var(--muted);cursor:pointer;
-  display:inline-flex;align-items:center;justify-content:center;padding:0;
+.sec{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.sec h2{font-size:1.1rem;font-weight:800}
+pre{
+  background:#070b12;color:#cbd5e1;border:1px solid var(--line);
+  border-radius:16px;padding:16px;max-height:440px;overflow:auto;
+  font:12.5px/1.55 var(--mono);
 }
-.info-btn:hover{color:var(--primary);border-color:var(--primary);background:var(--icon-bg)}
 
 .modal{
-  position:fixed;inset:0;
-  background:rgba(4,8,14,.72);
-  backdrop-filter:blur(6px);
-  -webkit-backdrop-filter:blur(6px);
-  display:flex;align-items:center;justify-content:center;
-  padding:16px;z-index:30;
+  position:fixed;inset:0;z-index:40;
+  background:rgba(4,8,14,.72);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
 }
 .modal-card{
-  background:linear-gradient(165deg,rgba(22,32,48,.98),rgba(12,18,28,.99));
-  border:1px solid var(--glass-border);
-  border-radius:20px;
-  width:min(520px,100%);
-  max-height:calc(100vh - 32px);overflow:auto;
-  padding:22px;
-  box-shadow:0 28px 80px rgba(0,0,0,.55);
+  width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;
+  background:var(--panel-2);border:1px solid var(--line);
+  border-radius:20px;padding:22px;box-shadow:var(--shadow);color:var(--text);
 }
-html[data-theme="light"] .modal-card{
-  background:#fff;color:#0f172a;
-  box-shadow:0 28px 80px rgba(15,23,42,.18);
-}
-.modal-head{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;
-  font-family:var(--font-display);font-weight:700;
-}
-.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
-.created-box{
-  background:rgba(7,11,18,.55);
-  border:1px solid var(--border);
-  border-radius:12px;padding:12px;margin:10px 0;
-}
-html[data-theme="light"] .created-box{background:#f8fafc}
-.created-box code{display:block;margin:6px 0 10px;word-break:break-all;background:transparent;padding:0;color:var(--text)}
-.check{display:flex;align-items:center;gap:8px;margin-top:8px;color:var(--text);font-size:.9rem;cursor:pointer}
-.check input{width:auto;margin:0}
-.hashes{display:grid;grid-template-columns:1fr;gap:8px}
-@media (min-width:640px){.hashes{grid-template-columns:1fr 1fr}}
-.proxy-info-list{margin:0;padding-left:18px;color:var(--muted);font-size:.92rem;line-height:1.55}
-.proxy-info-list li{margin:0 0 10px}
-.proxy-info-list strong{color:var(--text)}
-.status-line{min-height:1.35em;margin:10px 0 0;font-size:.92rem}
-
-.settings-block{margin-bottom:16px}
-.settings-pane-title{font-family:var(--font-display);font-size:1.05rem;margin:0 0 8px;letter-spacing:-.02em}
-.settings-h{margin:14px 0 8px;font-size:.95rem;font-weight:700;color:var(--text)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;font-weight:800}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:16px}
+.created-box{background:rgba(0,0,0,.22);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.created-box code{display:block;margin:6px 0 10px;background:transparent;padding:0;color:var(--text);word-break:break-all}
+.check{display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;font-size:.9rem}
+.check input{width:auto}
+.hashes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:520px){.hashes{grid-template-columns:1fr}}
+.list{margin:0;padding-left:18px;color:var(--muted);line-height:1.55}
+.list li{margin:0 0 10px}
+.list strong{color:var(--text)}
 
 @media (max-width:640px){
-  header{padding:12px 14px}
-  .shell{padding:0 14px}
-  .nav-rail{
-    width:calc(100% - 28px);max-width:none;justify-content:flex-start;
-    border-radius:18px;padding:4px;
-  }
-  .tab-btn{padding:10px 14px;font-size:14px;flex:1;text-align:center}
-  .brand{font-size:1.1rem;letter-spacing:.03em}
+  .topbar-inner,.page{padding-left:14px;padding-right:14px}
+  .brand{font-size:1.1rem}
+  .nav-btn{padding:10px 14px;font-size:.92rem}
+  .credit{display:none}
 }
 </style>
 </head>
 <body>
-<header>
-  <div class="brand">qWDTT / CSQTT</div>
-  <div class="top-actions">
-    <div class="brand-meta">
-      <button class="theme-btn" type="button" id="theme-btn" title="Тема" onclick="toggleTheme()" aria-label="Тема">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">qWDTT / CSQTT</div>
+    <div class="top-right">
+      <button class="icon-btn" type="button" id="theme-btn" title="Тема" onclick="toggleTheme()" aria-label="Тема">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
       </button>
-      <span class="brand-ver">panel by MaxPain99</span>
+      <span class="credit">panel by MaxPain99</span>
+      <button class="logout" type="button" onclick="location.href='/logout'">Выйти</button>
     </div>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="location.href='/logout'">Выйти</button>
   </div>
 </header>
 
-<nav class="nav-rail" role="tablist">
-  <button type="button" class="tab-btn active" id="nav-monitoring" onclick="switchNav('monitoring')">Мониторинг</button>
-  <button type="button" class="tab-btn" id="nav-clients" onclick="switchNav('clients')">Клиенты</button>
-  <button type="button" class="tab-btn" id="nav-logs" onclick="switchNav('logs')">Логи</button>
-  <button type="button" class="tab-btn" id="nav-settings" onclick="switchNav('settings')">Настройки</button>
-</nav>
+<div class="page">
+  <div class="nav-wrap">
+    <nav class="nav" role="tablist">
+      <button type="button" class="nav-btn active" id="nav-monitoring" onclick="switchNav('monitoring')">Мониторинг</button>
+      <button type="button" class="nav-btn" id="nav-clients" onclick="switchNav('clients')">Клиенты</button>
+      <button type="button" class="nav-btn" id="nav-logs" onclick="switchNav('logs')">Логи</button>
+      <button type="button" class="nav-btn" id="nav-settings" onclick="switchNav('settings')">Настройки</button>
+    </nav>
+  </div>
 
-<main class="shell">
-  <section class="pane" id="pane-monitoring">
-    <div class="grid" id="stats"></div>
-  </section>
+  <main>
+    <section class="pane" id="pane-monitoring">
+      <div class="grid" id="stats"></div>
+    </section>
 
-  <section class="pane" id="pane-clients" hidden>
-    <div class="clients-toolbar">
-      <div class="subtabs">
-        <button type="button" class="subtab active" id="tab-qwdtt" onclick="showClientTab('qwdtt')">qWDTT</button>
-        <button type="button" class="subtab" id="tab-csqtt" onclick="showClientTab('csqtt')">CSQTT</button>
+    <section class="pane" id="pane-clients" hidden>
+      <div class="toolbar">
+        <div class="pills">
+          <button type="button" class="pill active" id="tab-qwdtt" onclick="showClientTab('qwdtt')">qWDTT</button>
+          <button type="button" class="pill" id="tab-csqtt" onclick="showClientTab('csqtt')">CSQTT</button>
+        </div>
+        <button type="button" class="btn" onclick="openCreate()">Создать доступ</button>
       </div>
-      <button type="button" class="btn btn-blue" onclick="openCreate()">Создать доступ</button>
-    </div>
-    <div id="clients-qwdtt">
-      <p class="subnet-hint">TUN qWDTT: <b>10.66.66.0/24</b> · CSQTT: <b>10.66.67.0/24</b> — подсети не пересекаются</p>
-      <div id="clients" class="client-grid"></div>
-    </div>
-    <div id="clients-csqtt" hidden>
-      <p id="csqtt-status" class="status-line off"></p>
-      <p class="subnet-hint">TUN CSQTT: <b>10.66.67.0/24</b> · qWDTT: <b>10.66.66.0/24</b> — подсети не пересекаются</p>
-      <div id="csqtt-clients" class="client-grid"></div>
-    </div>
-  </section>
-
-  <section class="pane" id="pane-logs" hidden>
-    <div class="sec">
-      <h2>Логи</h2>
-      <div class="row">
-        <button class="btn btn-ghost" type="button" id="log-toggle" onclick="toggleLogs()">Выключить логи</button>
-        <button class="btn btn-ghost" type="button" onclick="clearLogs()">Очистить</button>
-        <button class="btn btn-ghost" type="button" onclick="logs()">Обновить</button>
+      <div id="clients-qwdtt">
+        <p class="hint">TUN qWDTT: <b>10.66.66.0/24</b> · CSQTT: <b>10.66.67.0/24</b> — подсети не пересекаются</p>
+        <div id="clients" class="client-grid"></div>
       </div>
-    </div>
-    <pre id="log"></pre>
-  </section>
-
-  <section class="pane" id="pane-settings" hidden>
-    <div class="glass settings-block">
-      <div class="proxy-head">
-        <h3>Общий SOCKS5 UDP — qWDTT и CSQTT</h3>
-        <button class="info-btn" type="button" title="О SOCKS5 UDP" onclick="document.getElementById('socks-info').hidden=false" aria-label="Справка">?</button>
+      <div id="clients-csqtt" hidden>
+        <p id="csqtt-status" class="status off"></p>
+        <p class="hint">TUN CSQTT: <b>10.66.67.0/24</b> · qWDTT: <b>10.66.66.0/24</b> — подсети не пересекаются</p>
+        <div id="csqtt-clients" class="client-grid"></div>
       </div>
-      <p class="hint">Один прокси на оба форка: TCP и UDP с <b>wdtt0</b> (qWDTT), <b>wdttraw0</b> и <b>csqtt1</b> (CSQTT) уходят в Xray/sing-box. При включении свой SOCKS в панели CSQTT гасится. Нужен инбаунд SOCKS/mixed с <b>UDP</b>.</p>
-      <form id="socks-form" onsubmit="return enableSocks(event)">
-        <div class="form-row">
-          <div class="field"><label>Хост</label><input name="host" value="127.0.0.1" placeholder="127.0.0.1"></div>
-          <div class="field"><label>Порт</label><input name="port" type="number" min="1" max="65535" placeholder="1080" required oninput="schedulePortCheck()"></div>
-          <div class="field"><label>Логин</label><input name="username" placeholder="необязательно" autocomplete="off"></div>
-          <div class="field"><label>Пароль</label><input name="password" type="password" placeholder="необязательно" autocomplete="new-password"></div>
+    </section>
+
+    <section class="pane" id="pane-logs" hidden>
+      <div class="sec">
+        <h2>Логи</h2>
+        <div class="row">
+          <button class="btn btn-ghost" type="button" id="log-toggle" onclick="toggleLogs()">Выключить логи</button>
+          <button class="btn btn-ghost" type="button" onclick="clearLogs()">Очистить</button>
+          <button class="btn btn-ghost" type="button" onclick="logs()">Обновить</button>
+        </div>
+      </div>
+      <pre id="log"></pre>
+    </section>
+
+    <section class="pane" id="pane-settings" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Общий SOCKS5 UDP</h3>
+          <button class="info" type="button" title="О SOCKS5 UDP" onclick="document.getElementById('socks-info').hidden=false" aria-label="Справка">?</button>
+        </div>
+        <p class="hint">Один прокси на qWDTT и CSQTT: TCP/UDP с <b>wdtt0</b>, <b>wdttraw0</b> и <b>csqtt1</b>. Нужен SOCKS/mixed с <b>UDP</b>.</p>
+        <form id="socks-form" onsubmit="return enableSocks(event)">
+          <div class="form-row">
+            <div class="field"><label>Хост</label><input name="host" value="127.0.0.1" placeholder="127.0.0.1"></div>
+            <div class="field"><label>Порт</label><input name="port" type="number" min="1" max="65535" placeholder="1080" required oninput="schedulePortCheck()"></div>
+            <div class="field"><label>Логин</label><input name="username" placeholder="необязательно" autocomplete="off"></div>
+            <div class="field"><label>Пароль</label><input name="password" type="password" placeholder="необязательно" autocomplete="new-password"></div>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" type="button" onclick="checkSocksPort()">Проверить TCP+UDP</button>
+            <button class="btn" type="submit" id="socks-add">Включить</button>
+            <button class="btn btn-ghost" type="button" onclick="socksOff()">Выключить</button>
+          </div>
+          <p id="socks-port-status" class="status off"></p>
+          <p id="serr" class="status off"></p>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Обновление серверной части</h3>
+        <p class="hint">Лог: <code>/var/log/qwdtt-panel-update.log</code>. При app-обновлении qWDTT панель не затирается.</p>
+        <div class="update-grid">
+          <div class="update-card">
+            <h4>Как из приложения</h4>
+            <p>Stock SpaceNeuroX / официальный CSQTT deploy.sh</p>
+            <div class="row">
+              <button class="btn btn-sm" type="button" onclick="upd('qwdtt','app')">qWDTT</button>
+              <button class="btn btn-ghost btn-sm" type="button" onclick="upd('csqtt','app')">CSQTT</button>
+              <button class="btn btn-sm" type="button" onclick="upd('all','app')">Оба</button>
+            </div>
+          </div>
+          <div class="update-card">
+            <h4>Из исходников GitHub</h4>
+            <p>Сборка MaxPain99/qwdtt-panel и cargo CSQTT</p>
+            <div class="row">
+              <button class="btn btn-sm" type="button" onclick="upd('qwdtt','source')">qWDTT + панель</button>
+              <button class="btn btn-ghost btn-sm" type="button" onclick="upd('csqtt','source')">CSQTT</button>
+              <button class="btn btn-sm" type="button" onclick="upd('all','source')">Оба</button>
+            </div>
+          </div>
         </div>
         <div class="row">
-          <button class="btn btn-ghost" type="button" onclick="checkSocksPort()">Проверить TCP+UDP</button>
-          <button class="btn" type="submit" id="socks-add">Включить</button>
-          <button class="btn btn-ghost" type="button" onclick="socksOff()">Выключить</button>
+          <button class="btn btn-ghost" type="button" onclick="reboot()">Перезагрузить VPS</button>
         </div>
-        <p id="socks-port-status" class="status-line off"></p>
-        <p id="serr" class="status-line off"></p>
-      </form>
-    </div>
-
-    <div class="glass settings-block">
-      <h3 class="settings-pane-title">Обновление серверной части</h3>
-      <p class="hint">Два режима: <b>как из приложения</b> (официальный деплой) и <b>из исходников GitHub</b> (сборка). Панель <code>qwdtt-panel</code> при app-обновлении qWDTT не затирается. Лог: <code>/var/log/qwdtt-panel-update.log</code></p>
-
-      <h4 class="settings-h">Как из приложения</h4>
-      <p class="hint" style="margin-bottom:8px">qWDTT — stock SpaceNeuroX <code>wdtt-server</code> (как вкладка «Серверы» в APK). CSQTT — официальный <code>deploy.sh</code>.</p>
-      <div class="row" style="margin-bottom:14px">
-        <button class="btn btn-blue" type="button" onclick="upd('qwdtt','app')">qWDTT</button>
-        <button class="btn btn-ghost" type="button" onclick="upd('csqtt','app')">CSQTT</button>
-        <button class="btn btn-blue" type="button" onclick="upd('all','app')">Оба</button>
+        <p id="upd-status" class="status off"></p>
       </div>
 
-      <h4 class="settings-h">Из исходников GitHub</h4>
-      <p class="hint" style="margin-bottom:8px">qWDTT — сборка MaxPain99/qwdtt-panel (сервер + панель). CSQTT — cargo из amurcanov/csqtt.</p>
-      <div class="row" style="margin-bottom:14px">
-        <button class="btn" type="button" onclick="upd('qwdtt','source')">qWDTT + панель</button>
-        <button class="btn btn-ghost" type="button" onclick="upd('csqtt','source')">CSQTT</button>
-        <button class="btn" type="button" onclick="upd('all','source')">Оба</button>
+      <div class="toolbar" style="margin-top:4px">
+        <div class="pills">
+          <button type="button" class="pill active" id="set-tab-qwdtt" onclick="showSettingsTab('qwdtt')">qWDTT</button>
+          <button type="button" class="pill" id="set-tab-csqtt" onclick="showSettingsTab('csqtt')">CSQTT</button>
+        </div>
       </div>
 
-      <div class="row">
-        <button class="btn btn-ghost" type="button" onclick="reboot()">Перезагрузить VPS</button>
+      <div id="settings-qwdtt" class="panel">
+        <h3>qWDTT</h3>
+        <p class="hint">VPN и admin API — сервис <b>wdtt</b> (TUN <b>10.66.66.0/24</b>). Панель — <b>qwdtt-panel</b>.</p>
       </div>
-      <p id="upd-status" class="status-line off"></p>
-    </div>
 
-    <div class="subtabs">
-      <button type="button" class="subtab active" id="set-tab-qwdtt" onclick="showSettingsTab('qwdtt')">qWDTT</button>
-      <button type="button" class="subtab" id="set-tab-csqtt" onclick="showSettingsTab('csqtt')">CSQTT</button>
-    </div>
-
-    <div id="settings-qwdtt" class="glass">
-      <h3 class="settings-pane-title">qWDTT</h3>
-      <p class="hint">VPN и admin API — сервис <b>wdtt</b> (TUN <b>10.66.66.0/24</b>). Панель — <b>qwdtt-panel</b>. CSQTT использует <b>10.66.67.0/24</b> — без пересечения.</p>
-    </div>
-
-    <div id="settings-csqtt" class="glass" hidden>
-      <h3 class="settings-pane-title">CSQTT</h3>
-      <p id="csqtt-settings-status" class="status-line off"></p>
-      <p class="hint">Клиенты — во вкладке «Клиенты». DNS и главный пароль — в родной панели <b>:46002</b>. Общий SOCKS5 UDP покрывает <b>csqtt1</b>. Обновление бинарника — кнопкой выше.</p>
-      <div class="row" style="margin-top:12px">
-        <a class="btn btn-ghost" id="csqtt-native-link" href="#" target="_blank" rel="noopener">Открыть панель CSQTT</a>
-        <button class="btn btn-ghost" type="button" onclick="loadCsqttSettings()">Обновить статус</button>
+      <div id="settings-csqtt" class="panel" hidden>
+        <h3>CSQTT</h3>
+        <p id="csqtt-settings-status" class="status off"></p>
+        <p class="hint">DNS и главный пароль — в родной панели <b>:46002</b>. Общий SOCKS покрывает <b>csqtt1</b>.</p>
+        <div class="row">
+          <a class="btn btn-ghost" id="csqtt-native-link" href="#" target="_blank" rel="noopener">Открыть панель CSQTT</a>
+          <button class="btn btn-ghost" type="button" onclick="loadCsqttSettings()">Обновить статус</button>
+        </div>
       </div>
-    </div>
-  </section>
-</main>
+    </section>
+  </main>
+</div>
 
 <div id="socks-info" class="modal" hidden onclick="if(event.target===this)this.hidden=true">
   <div class="modal-card" onclick="event.stopPropagation()">
-    <div class="modal-head"><b>SOCKS5 UDP</b>
+    <div class="modal-head"><span>SOCKS5 UDP</span>
       <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('socks-info').hidden=true">Закрыть</button>
     </div>
-    <ul class="proxy-info-list">
-      <li><strong>Зачем?</strong> Маршрутизировать трафик <b>обоих</b> форков (qWDTT и CSQTT) в Xray, 3x-ui и другие панели.</li>
-      <li><strong>Как работает?</strong> TPROXY TCP+UDP с <b>wdtt0</b>, <b>wdttraw0</b> и <b>csqtt1</b> в один SOCKS5. Если прокси недоступен — прямой выход с VPS. Свой SOCKS CSQTT при этом выключается.</li>
-      <li><strong>Как настроить?</strong> Создайте инбаунд SOCKS5 (или mixed) и <b>включите UDP</b>. Укажите порт здесь и нажмите «Проверить TCP+UDP».</li>
+    <ul class="list">
+      <li><strong>Зачем?</strong> Маршрутизировать трафик обоих форков в Xray / 3x-ui.</li>
+      <li><strong>Как работает?</strong> TPROXY TCP+UDP с wdtt0, wdttraw0 и csqtt1 в один SOCKS5.</li>
+      <li><strong>Как настроить?</strong> Инбаунд SOCKS/mixed с UDP → порт → «Проверить TCP+UDP».</li>
     </ul>
     <div class="modal-actions">
       <button class="btn" type="button" onclick="document.getElementById('socks-info').hidden=true">Понятно</button>
@@ -529,7 +439,7 @@ html[data-theme="light"] .created-box{background:#f8fafc}
 <div id="modal" class="modal" hidden onclick="if(event.target===this)closeCreate()">
   <div class="modal-card" role="dialog" aria-modal="true">
     <div class="modal-head">
-      <b id="modal-title">Новый клиент</b>
+      <span id="modal-title">Новый клиент</span>
       <button class="btn btn-ghost btn-sm" type="button" onclick="closeCreate()">Закрыть</button>
     </div>
     <form id="create-form" onsubmit="return create(event)">
@@ -548,7 +458,7 @@ html[data-theme="light"] .created-box{background:#f8fafc}
           <input name="vk_hash4" placeholder="VK hash 4">
         </div>
       </div>
-      <p id="cerr" class="status-line off"></p>
+      <p id="cerr" class="status off"></p>
       <div class="modal-actions">
         <button class="btn btn-ghost" type="button" onclick="closeCreate()">Отмена</button>
         <button class="btn" type="submit">Создать</button>
@@ -653,25 +563,25 @@ function renderClientCard(c, i, kind){
   return `<article class="client-card">
     <div class="client-card-head">
       <div class="client-name">${esc(name)}</div>
-      <span class="${active?'badge-active':'badge-off'}">${active?'Активно':'Выкл'}</span>
+      <span class="badge ${active?'on':'off'}">${active?'Активно':'Выкл'}</span>
     </div>
-    <div class="client-field">
-      <span class="k">Ключ (пароль)</span>
+    <div>
+      <div class="field-k">Ключ (пароль)</div>
       <div class="key-box">${esc(c.password)}
         <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'password',this)">копировать</button>
       </div>
     </div>
-    <div class="client-field">
-      <span class="k">Срок действия</span>
-      <span class="v">${exp}</span>
+    <div>
+      <div class="field-k">Срок действия</div>
+      <div class="field-v">${exp}</div>
     </div>
-    <div class="client-field">
-      <span class="k">Трафик</span>
-      <span class="v">↑ ${fmt(c.up)} / ↓ ${fmt(c.down)}</span>
+    <div>
+      <div class="field-k">Трафик</div>
+      <div class="field-v">↑ ${fmt(c.up)} / ↓ ${fmt(c.down)}</div>
     </div>
-    <div class="client-field">
-      <span class="k">${kind==='csqtt'?'Потоки':'Устройства'}</span>
-      <span class="flow-badge">${flows}${kind==='qwdtt' && c.max_devices ? '/'+c.max_devices : ''}</span>
+    <div>
+      <div class="field-k">${kind==='csqtt'?'Потоки':'Устройства'}</div>
+      <span class="flow">${flows}${kind==='qwdtt' && c.max_devices ? '/'+c.max_devices : ''}</span>
     </div>
     <div class="client-actions">
       <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'${linkKey}',this)">копировать ссылку</button>
@@ -695,17 +605,17 @@ async function refresh(){
       ['SOCKS5 UDP', s.socks_on ? ('TCP '+(s.socks_tcp||0)+' · UDP '+(s.socks_udp||0)+(s.socks_ifaces&&s.socks_ifaces.length?' · '+s.socks_ifaces.join(', '):'')) : 'выкл'],
       ['CSQTT', s.csqtt_ok ? ('вкл '+(s.csqtt_active||0)+(s.csqtt_iface_up?' · csqtt1':'')) : (s.csqtt_error ? 'нет связи' : '—')],
       ['Логи', s.logs_active ? 'вкл' : 'выкл'],
-    ].map(([k,v])=>`<div class="card"><span>${esc(k)}</span><strong>${esc(String(v??''))}</strong></div>`).join('');
+    ].map(([k,v])=>`<div class="stat"><span class="k">${esc(k)}</span><div class="v">${esc(String(v??''))}</div></div>`).join('');
   } catch (ex) {
-    document.getElementById('stats').innerHTML = `<div class="card"><span>Ошибка</span><strong>${esc(ex.message||ex)}</strong></div>`;
+    document.getElementById('stats').innerHTML = `<div class="stat"><span class="k">Ошибка</span><div class="v">${esc(ex.message||ex)}</div></div>`;
   }
   try {
     const d = await api('/api/clients');
     clientRows = d.clients || [];
     document.getElementById('clients').innerHTML = clientRows.map((c,i) => renderClientCard(c, i, 'qwdtt')).join('')
-      || '<p class="subnet-hint">Пока нет клиентов qWDTT</p>';
+      || '<p class="hint">Пока нет клиентов qWDTT</p>';
   } catch (ex) {
-    document.getElementById('clients').innerHTML = `<p class="subnet-hint bad">${esc(ex.message||ex)}</p>`;
+    document.getElementById('clients').innerHTML = `<p class="hint bad">${esc(ex.message||ex)}</p>`;
   }
 }
 
@@ -787,7 +697,7 @@ async function create(e){
     await refresh();
     if (clientKind === 'csqtt') await loadCsqtt();
   } catch (ex) {
-    err.className = 'status-line bad';
+    err.className = 'status bad';
     err.textContent = 'Не создан: ' + (ex.message || ex);
   }
   return false;
@@ -813,16 +723,16 @@ async function loadCsqtt(){
   try {
     const d = await api('/api/csqtt');
     if (d.connected) {
-      st.className = 'status-line on';
+      st.className = 'status on';
       st.textContent = d.iface_up ? 'CSQTT · csqtt1' : 'CSQTT';
       await loadCsqttClients();
     } else {
-      st.className = 'status-line ' + (d.error ? 'bad' : 'off');
+      st.className = 'status ' + (d.error ? 'bad' : 'off');
       st.textContent = d.error || 'CSQTT недоступен';
       document.getElementById('csqtt-clients').innerHTML = '';
     }
   } catch (ex) {
-    st.className = 'status-line bad';
+    st.className = 'status bad';
     st.textContent = ex.message || ex;
   }
 }
@@ -830,7 +740,7 @@ async function loadCsqttClients(){
   const d = await api('/api/csqtt/clients');
   csqttRows = d.clients || [];
   document.getElementById('csqtt-clients').innerHTML = csqttRows.map((c,i) => renderClientCard(c, i, 'csqtt')).join('')
-    || '<p class="subnet-hint">Пока нет клиентов CSQTT</p>';
+    || '<p class="hint">Пока нет клиентов CSQTT</p>';
 }
 function copyCsqtt(i, key, btn){
   copyText((csqttRows[i] && csqttRows[i][key]) || '').then(ok => flashBtn(btn, ok));
@@ -842,14 +752,14 @@ async function loadCsqttSettings(){
   try {
     const d = await api('/api/csqtt');
     if (d.connected) {
-      st.className = 'status-line on';
-      st.textContent = (d.iface_up ? 'Связь есть · csqtt1' : 'Связь есть') + (d.error ? '' : '');
+      st.className = 'status on';
+      st.textContent = d.iface_up ? 'Связь есть · csqtt1' : 'Связь есть';
     } else {
-      st.className = 'status-line bad';
+      st.className = 'status bad';
       st.textContent = d.error || 'CSQTT недоступен';
     }
   } catch (ex) {
-    st.className = 'status-line bad';
+    st.className = 'status bad';
     st.textContent = ex.message || ex;
   }
 }
@@ -874,13 +784,13 @@ async function loadSocks(){
   }
   if (!err) return;
   if (d.on && d.listening) {
-    err.className = 'status-line on';
-    err.textContent = 'SOCKS5 UDP для qWDTT+CSQTT — TCP '+(d.tcp||0)+', UDP '+(d.udp||0)+(d.ifaces&&d.ifaces.length?' · '+d.ifaces.join(', '):'');
+    err.className = 'status on';
+    err.textContent = 'SOCKS5 UDP — TCP '+(d.tcp||0)+', UDP '+(d.udp||0)+(d.ifaces&&d.ifaces.length?' · '+d.ifaces.join(', '):'');
   } else if (d.health && d.health !== 'ok' && d.health !== 'выкл' && d.health !== '') {
-    err.className = 'status-line bad';
+    err.className = 'status bad';
     err.textContent = d.health;
   } else {
-    err.className = 'status-line off';
+    err.className = 'status off';
     err.textContent = 'SOCKS выключен — выход с VPS напрямую';
   }
 }
@@ -888,7 +798,7 @@ function showSocksMsg(text, ok){
   const el = document.getElementById('socks-port-status');
   if (!el) return;
   el.textContent = text || '';
-  el.className = 'status-line ' + (ok ? 'on' : (text ? 'bad' : 'off'));
+  el.className = 'status ' + (ok ? 'on' : (text ? 'bad' : 'off'));
 }
 async function enableSocks(e){
   e.preventDefault();
@@ -907,7 +817,7 @@ async function enableSocks(e){
     await refresh();
   } catch (ex) {
     showSocksMsg('Не включён: ' + (ex.message || ex), false);
-    err.className = 'status-line bad';
+    err.className = 'status bad';
     err.textContent = ex.message || ex;
   }
   if (btn) btn.disabled = false;
@@ -957,27 +867,25 @@ async function upd(target, mode){
   const label = (labels[target] || labels.all) + ' · ' + modeLabel;
   let warn = 'Запустить обновление: '+label+'?';
   if (mode === 'app' && (target === 'qwdtt' || target === 'all')) {
-    warn += '\n\nStock SpaceNeuroX wdtt-server. Панель сохранится, unit с admin API восстановится.';
+    warn += '\n\nStock SpaceNeuroX wdtt-server. Панель сохранится.';
   }
   if (mode === 'app' && (target === 'csqtt' || target === 'all')) {
-    warn += '\n\nОфициальный CSQTT deploy.sh (как с Android).';
+    warn += '\n\nОфициальный CSQTT deploy.sh.';
   }
-  if (mode === 'source') {
-    warn += '\n\nСборка может занять несколько минут.';
-  }
+  if (mode === 'source') warn += '\n\nСборка может занять несколько минут.';
   if (!confirm(warn)) return;
   const st = document.getElementById('upd-status');
-  if (st) { st.className = 'status-line on'; st.textContent = 'Запущено: '+label+'…'; }
+  if (st) { st.className = 'status on'; st.textContent = 'Запущено: '+label+'…'; }
   try {
     await api('/api/update-server', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body: new URLSearchParams({target, mode})
     });
-    if (st) st.textContent = 'Обновление запущено ('+label+'). Смотрите /var/log/qwdtt-panel-update.log';
+    if (st) st.textContent = 'Обновление запущено ('+label+'). Лог: /var/log/qwdtt-panel-update.log';
     alert('Обновление запущено ('+label+'). Через несколько минут обновите страницу.');
   } catch (ex) {
-    if (st) { st.className = 'status-line bad'; st.textContent = ex.message || ex; }
+    if (st) { st.className = 'status bad'; st.textContent = ex.message || ex; }
     alert(ex.message || ex);
   }
 }
