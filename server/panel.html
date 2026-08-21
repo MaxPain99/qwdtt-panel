@@ -49,7 +49,9 @@ h2{font-size:1rem;margin:22px 0 10px}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 .created-box{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:12px;margin:10px 0}
 .created-box code{display:block;margin:6px 0 10px;word-break:break-all}
-body.modal-open{overflow:hidden}
+.check{display:flex;align-items:center;gap:8px;margin-top:8px;color:var(--txt);font-size:.9rem;cursor:pointer}
+.check input{width:auto;margin:0}
+.days-row{display:flex;flex-direction:column;gap:0}
 </style>
 </head>
 <body>
@@ -124,9 +126,10 @@ body.modal-open{overflow:hidden}
         <label for="f-label">Имя</label>
         <input id="f-label" name="label" placeholder="Имя" required>
       </div>
-      <div class="field">
+      <div class="field days-row">
         <label for="f-days">Срок, дни</label>
         <input id="f-days" name="days" type="number" min="1" max="365" value="30">
+        <label class="check"><input type="checkbox" id="f-unlimited" onchange="toggleUnlimited()"> безлимит</label>
       </div>
       <div class="field">
         <label>VK hash — до 4</label>
@@ -202,7 +205,7 @@ async function refresh(){
     const n = String(c.hashes||'').split(',').filter(Boolean).length;
     const hashLine = c.owner ? '' : (n ? `<div class="off">${n===1?'1 хэш':n+' хэша'}</div>` : '');
     return `<tr>
-    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'')}</div>${hashLine}</td>
+    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'безлимит')}</div>${hashLine}</td>
     <td><code>${esc(c.password)}</code> <button class="ghost" type="button" onclick="copyField(${i},'password',this)">копировать</button></td>
     <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
     <td>${c.active_devices||0}/${c.max_devices||1}</td>
@@ -256,12 +259,28 @@ async function copyText(s){
   if (!ok) prompt('Скопируйте', s);
   return ok;
 }
+function toggleUnlimited(){
+  const unlim = document.getElementById('f-unlimited');
+  const days = document.getElementById('f-days');
+  if (!unlim || !days) return;
+  days.disabled = unlim.checked;
+  if (unlim.checked) {
+    days.value = '';
+    days.placeholder = 'безлимит';
+  } else {
+    if (!days.value) days.value = '30';
+    days.placeholder = '';
+  }
+}
 function openCreate(){
   const modal = document.getElementById('modal');
   const form = document.getElementById('create-form');
   const err = document.getElementById('cerr');
   form.reset();
   form.days.value = '30';
+  const unlim = document.getElementById('f-unlimited');
+  if (unlim) unlim.checked = false;
+  toggleUnlimited();
   err.textContent = '';
   err.className = 'off';
   form.hidden = false;
@@ -291,6 +310,7 @@ async function create(e){
     const path = clientKind === 'csqtt' ? '/api/csqtt/clients' : '/api/clients';
     const body = new URLSearchParams(f);
     body.set('vk_hash', hashes.join(','));
+    if (document.getElementById('f-unlimited')?.checked) body.set('days', '0');
     const created = await api(path, {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -369,7 +389,7 @@ async function loadCsqttClients(){
     const n = String(c.hashes||'').split(',').filter(Boolean).length;
     const hashLine = c.owner ? '' : (n ? `<div class="off">${n===1?'1 хэш':n+' хэша'}</div>` : '');
     return `<tr>
-    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'')}</div>${hashLine}</td>
+    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'безлимит')}</div>${hashLine}</td>
     <td><code>${esc(c.password)}</code> <button class="ghost" type="button" onclick="copyCsqtt(${i},'password',this)">копировать</button></td>
     <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
     <td>${c.sessions||0}</td>

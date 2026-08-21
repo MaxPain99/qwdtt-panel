@@ -526,7 +526,7 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 	days := 30
 	if v := r.FormValue("days"); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > 365 {
+		if err != nil || n < 0 || n > 365 {
 			writePanelError(w, http.StatusBadRequest, "days")
 			return
 		}
@@ -572,9 +572,13 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 	if label == "" {
 		label = nextPasswordLabel()
 	}
+	expiresAt := int64(0)
+	if days > 0 {
+		expiresAt = time.Now().Add(time.Duration(days) * 24 * time.Hour).Unix()
+	}
 	db.Passwords[newPass] = &PasswordEntry{
 		Label:      label,
-		ExpiresAt:  time.Now().Add(time.Duration(days) * 24 * time.Hour).Unix(),
+		ExpiresAt:  expiresAt,
 		MaxDevices: 1,
 		VkHash:     vkHash,
 		Ports:      "56000,56001,56002",
