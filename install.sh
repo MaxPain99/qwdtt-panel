@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # qWDTT HTTPS panel + CSQTT side-by-side installer.
 # qWDTT: packaging/wdtt.service (SpaceNeuroX + -web-port 46102).
-# CSQTT: packaging/csqtt.service (ports 46000/46002, TUN csqtt1) — binary from
-# existing path, CSQTT_BIN_URL, /tmp/csqtt, or build from amurcanov/csqtt (no
-# copying of their deploy.sh).
+# CSQTT: официальный deploy.sh из amurcanov/csqtt (сеть/unit/NAT), как с Android.
+# Бинарник: CSQTT_BIN_URL | /tmp/csqtt | уже стоящий | сборка cargo (glibc).
 #
 #   curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 set -euo pipefail
 
-readonly SCRIPT_VERSION="3.2"
+readonly SCRIPT_VERSION="3.3"
 readonly REPO_URL="${QWDTT_REPO:-https://github.com/MaxPain99/qwdtt-panel.git}"
 readonly REPO_BRANCH="${QWDTT_BRANCH:-master}"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
@@ -27,6 +26,8 @@ readonly CSQTT_ENV_FILE="${CSQTT_CONFIG_DIR}/csqtt.env"
 readonly CSQTT_UNIT_PATH="/etc/systemd/system/csqtt.service"
 readonly CSQTT_PEER_PORT="${CSQTT_PEER_PORT:-46000}"
 readonly CSQTT_WEB_PORT="${CSQTT_WEB_PORT:-46002}"
+readonly CSQTT_SSH_PORT="${CSQTT_SSH_PORT:-22}"
+readonly CSQTT_DEPLOY_URL="${CSQTT_DEPLOY_URL:-https://raw.githubusercontent.com/amurcanov/csqtt/main/app/src/main/assets/deploy.sh}"
 # 1 = try cargo build if no binary; 0 = require existing binary / URL /tmp/csqtt
 readonly CSQTT_BUILD="${CSQTT_BUILD:-1}"
 
@@ -36,6 +37,7 @@ OWNER_PASS="${QWDTT_PASSWORD:-}"
 WEB_PASS="${QWDTT_WEB_PASS:-}"
 CSQTT_WEB_USER="${CSQTT_WEB_USER:-admin}"
 CSQTT_WEB_PASS="${CSQTT_WEB_PASS:-}"
+CSQTT_MAIN_PASS="${CSQTT_MAIN_PASS:-}"
 SKIP_CSQTT="${SKIP_CSQTT:-0}"
 
 log_info()  { echo "[+] $*" | tee -a "$LOG_FILE"; }
@@ -205,6 +207,7 @@ CSQTT_PEER_PORT=${CSQTT_PEER_PORT}
 CSQTT_WEB_PORT=${CSQTT_WEB_PORT}
 CSQTT_WEB_USER=${CSQTT_WEB_USER}
 CSQTT_WEB_PASS=${CSQTT_WEB_PASS}
+CSQTT_MAIN_PASS=${CSQTT_MAIN_PASS}
 CSQTT_ENV=${CSQTT_ENV_FILE}
 EOF
     chmod 600 "$CRED_FILE"
@@ -303,76 +306,81 @@ build_csqtt_binary() {
     done
     [ -n "$built" ] || die "после сборки нет бинарника csqtt"
     install -m 0755 "$built" "$CSQTT_BIN"
+    install -m 0755 "$built" /tmp/csqtt
     log_info "установлен $CSQTT_BIN (${triple})"
 }
 
-obtain_csqtt_binary() {
+# Кладёт рабочий бинарник в /tmp/csqtt (как Android перед deploy.sh).
+stage_csqtt_binary_for_deploy() {
     if [ -n "${CSQTT_BIN_URL:-}" ]; then
         log_info "скачиваю CSQTT: $CSQTT_BIN_URL"
         curl -fL --retry 3 -o /tmp/csqtt "$CSQTT_BIN_URL" || die "не скачать CSQTT_BIN_URL"
         chmod +x /tmp/csqtt
-        install -m 0755 /tmp/csqtt "$CSQTT_BIN"
-        rm -f /tmp/csqtt
-        log_info "установлен $CSQTT_BIN из URL"
         return 0
     fi
-    if [ -f /tmp/csqtt ]; then
-        chmod +x /tmp/csqtt
-        install -m 0755 /tmp/csqtt "$CSQTT_BIN"
-        log_info "установлен $CSQTT_BIN из /tmp/csqtt"
+    if [ -f /tmp/csqtt ] && [ -x /tmp/csqtt ]; then
+        log_info "берём /tmp/csqtt"
         return 0
     fi
     if [ -x "$CSQTT_BIN" ]; then
-        log_info "CSQTT уже есть: $CSQTT_BIN"
+        install -m 0755 "$CSQTT_BIN" /tmp/csqtt
+        log_info "staging $CSQTT_BIN → /tmp/csqtt"
         return 0
     fi
     if [ "$CSQTT_BUILD" = "1" ]; then
         build_csqtt_binary
+        [ -x /tmp/csqtt ] || install -m 0755 "$CSQTT_BIN" /tmp/csqtt
         return 0
     fi
     die "нет CSQTT: положите /tmp/csqtt, задайте CSQTT_BIN_URL или CSQTT_BUILD=1"
 }
 
-seed_csqtt_env() {
-    mkdir -p "$CSQTT_CONFIG_DIR"
-    chmod 700 "$CSQTT_CONFIG_DIR"
+prepare_csqtt_deploy_files() {
     if [ -z "$CSQTT_WEB_PASS" ] && [ -s "$CSQTT_ENV_FILE" ]; then
-        CSQTT_WEB_PASS="$(grep -E '^CSQTT_WEB_PASS=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r')"
-        CSQTT_WEB_USER="$(grep -E '^CSQTT_WEB_USER=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r')"
-        [ -n "$CSQTT_WEB_USER" ] || CSQTT_WEB_USER="admin"
+        CSQTT_WEB_PASS="$(grep -E '^CSQTT_WEB_PASS=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+        CSQTT_WEB_USER="$(grep -E '^CSQTT_WEB_USER=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
     fi
-    if [ -z "$CSQTT_WEB_PASS" ]; then
-        CSQTT_WEB_PASS="$WEB_PASS"
+    [ -n "${CSQTT_WEB_USER:-}" ] || CSQTT_WEB_USER="admin"
+    [ -n "${CSQTT_WEB_PASS:-}" ] || CSQTT_WEB_PASS="$WEB_PASS"
+    [ -n "$CSQTT_WEB_PASS" ] || CSQTT_WEB_PASS="$(rand_pass 16)"
+
+    if [ -z "$CSQTT_MAIN_PASS" ] && [ -s "$CRED_FILE" ]; then
+        CSQTT_MAIN_PASS="$(grep -E '^CSQTT_MAIN_PASS=' "$CRED_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
     fi
-    [ -n "$CSQTT_WEB_USER" ] || CSQTT_WEB_USER="admin"
-    cat > "$CSQTT_ENV_FILE" <<EOF
+    [ -n "$CSQTT_MAIN_PASS" ] || CSQTT_MAIN_PASS="$(rand_pass 18)"
+
+    # Как Android-клиент: /tmp/csqtt.env + /tmp/csqtt-deploy.json перед deploy.sh
+    cat > /tmp/csqtt.env <<EOF
 CSQTT_WEB_USER=${CSQTT_WEB_USER}
 CSQTT_WEB_PASS=${CSQTT_WEB_PASS}
 CSQTT_SECURE_COOKIE=false
-CSQTT_URING_MODE=defer
-CSQTT_PEER_PORT=${CSQTT_PEER_PORT}
-CSQTT_WEB_PORT=${CSQTT_WEB_PORT}
 EOF
-    chmod 600 "$CSQTT_ENV_FILE"
-    log_info "CSQTT env: $CSQTT_ENV_FILE"
+    chmod 600 /tmp/csqtt.env
+
+    local device_id dns_value
+    device_id="qwdtt-panel-$(hostname -s 2>/dev/null || echo vps)"
+    dns_value="${CSQTT_DNS:-1.1.1.1,1.0.0.1}"
+    cat > /tmp/csqtt-deploy.json <<EOF
+{"main_password":"${CSQTT_MAIN_PASS}","device_id":"${device_id}","dns":"${dns_value}"}
+EOF
+    chmod 600 /tmp/csqtt-deploy.json
 }
 
-write_csqtt_unit() {
-    local src_unit="${SRC_DIR}/packaging/csqtt.service"
-    local src_net="${SRC_DIR}/packaging/csqtt-network-up.sh"
-    [ -f "$src_unit" ] || die "нет $src_unit"
-    [ -f "$src_net" ] || die "нет $src_net"
-    mkdir -p /usr/local/lib/csqtt
-    install -m 0755 "$src_net" /usr/local/lib/csqtt/network-up.sh
-    sed -e "s/--listen 0.0.0.0:46000/--listen 0.0.0.0:${CSQTT_PEER_PORT}/" \
-        -e "s/--web-port 46002/--web-port ${CSQTT_WEB_PORT}/" \
-        "$src_unit" > /tmp/csqtt.service.$$
-    install -m 0644 /tmp/csqtt.service.$$ "$CSQTT_UNIT_PATH"
-    rm -f /tmp/csqtt.service.$$
-    systemctl daemon-reload
-    systemctl unmask csqtt >/dev/null 2>&1 || true
-    systemctl enable csqtt >/dev/null 2>&1 || true
-    log_info "unit csqtt: peer ${CSQTT_PEER_PORT}, web ${CSQTT_WEB_PORT}"
+run_official_csqtt_deploy() {
+    log_info "скачиваю официальный deploy.sh CSQTT..."
+    curl -fL --retry 3 -o /tmp/csqtt-deploy.sh "$CSQTT_DEPLOY_URL" \
+        || die "не скачать $CSQTT_DEPLOY_URL"
+    chmod +x /tmp/csqtt-deploy.sh
+    log_info "запуск amurcanov/csqtt deploy.sh (systemd)..."
+    # Тот же вызов, что делает Android DeployOperations.
+    env CSQTT_PEER_PORT="$CSQTT_PEER_PORT" \
+        CSQTT_SSH_PORT="$CSQTT_SSH_PORT" \
+        CSQTT_WEB_PORT="$CSQTT_WEB_PORT" \
+        CSQTT_DEPLOY_MODE=systemd \
+        bash /tmp/csqtt-deploy.sh install >>"$LOG_FILE" 2>&1 \
+        || die "deploy.sh CSQTT не удался, см. $LOG_FILE и /var/log/csqtt-install.log"
+    rm -f /tmp/csqtt-deploy.sh
+    log_info "официальный deploy.sh завершён"
 }
 
 open_firewall() {
@@ -390,20 +398,23 @@ install_csqtt_stack() {
     if [ "$SKIP_CSQTT" = "1" ]; then
         log_warn "SKIP_CSQTT=1 — CSQTT пропускаю"
         CSQTT_WEB_PASS="${CSQTT_WEB_PASS:-(skipped)}"
+        CSQTT_MAIN_PASS="${CSQTT_MAIN_PASS:-(skipped)}"
         return 0
     fi
-    obtain_csqtt_binary
-    seed_csqtt_env
-    write_csqtt_unit
-    /usr/local/lib/csqtt/network-up.sh >>"$LOG_FILE" 2>&1 || log_warn "network-up.sh вернул ошибку — проверьте при старте csqtt"
-    systemctl restart csqtt
-    sleep 2
+    stage_csqtt_binary_for_deploy
+    prepare_csqtt_deploy_files
+    run_official_csqtt_deploy
     if ! systemctl is-active --quiet csqtt; then
-        log_error "csqtt не запустился"
+        log_error "csqtt не active после deploy.sh"
         journalctl -u csqtt -n 40 --no-pager | tee -a "$LOG_FILE" || true
         exit 1
     fi
-    log_info "csqtt.service активен"
+    # подтянуть пароли из итогового env (deploy мог дописать URING_MODE)
+    if [ -s "$CSQTT_ENV_FILE" ]; then
+        CSQTT_WEB_PASS="$(grep -E '^CSQTT_WEB_PASS=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+        CSQTT_WEB_USER="$(grep -E '^CSQTT_WEB_USER=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+    fi
+    log_info "csqtt.service активен (официальный deploy)"
 }
 
 update_csqtt_stack() {
@@ -412,29 +423,16 @@ update_csqtt_stack() {
         return 0
     fi
     if [ ! -x "$CSQTT_BIN" ] && [ -z "${CSQTT_BIN_URL:-}" ] && [ ! -f /tmp/csqtt ] && [ "$CSQTT_BUILD" != "1" ]; then
-        log_warn "CSQTT ещё не установлен — пропускаю (полный install для первой установки)"
+        log_warn "CSQTT ещё не установлен — полный install"
+        install_csqtt_stack
         return 0
     fi
-    obtain_csqtt_binary
-    if [ -s "$CSQTT_ENV_FILE" ]; then
-        CSQTT_WEB_PASS="$(grep -E '^CSQTT_WEB_PASS=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
-        CSQTT_WEB_USER="$(grep -E '^CSQTT_WEB_USER=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
-    fi
-    [ -n "${CSQTT_WEB_USER:-}" ] || CSQTT_WEB_USER="admin"
-    [ -n "${CSQTT_WEB_PASS:-}" ] || CSQTT_WEB_PASS="$WEB_PASS"
-    [ -n "$CSQTT_WEB_PASS" ] || CSQTT_WEB_PASS="$(rand_pass 16)"
-    seed_csqtt_env
-    if [ ! -f "$CSQTT_UNIT_PATH" ]; then
-        write_csqtt_unit
-    else
-        mkdir -p /usr/local/lib/csqtt
-        [ -f "${SRC_DIR}/packaging/csqtt-network-up.sh" ] && \
-            install -m 0755 "${SRC_DIR}/packaging/csqtt-network-up.sh" /usr/local/lib/csqtt/network-up.sh
-        log_info "csqtt.service не переписываю"
-    fi
-    systemctl restart csqtt
-    sleep 1
-    systemctl is-active --quiet csqtt && log_info "csqtt обновлён" || log_warn "csqtt не active — journalctl -u csqtt"
+    # Обновление бинарника + повтор официального deploy (как переустановка с клиента).
+    stage_csqtt_binary_for_deploy
+    prepare_csqtt_deploy_files
+    run_official_csqtt_deploy
+    systemctl is-active --quiet csqtt && log_info "csqtt обновлён через deploy.sh" \
+        || log_warn "csqtt не active — journalctl -u csqtt / /var/log/csqtt-install.log"
 }
 
 do_install() {
@@ -465,9 +463,10 @@ do_install() {
     echo "  логин:  ${WEB_USER}"
     echo "  пароль: ${WEB_PASS}"
     echo "  VPN:    ${OWNER_PASS}"
-    echo "CSQTT:        peer UDP ${CSQTT_PEER_PORT}, web ${CSQTT_WEB_PORT} (API для вкладки панели)"
+    echo "CSQTT:        peer UDP ${CSQTT_PEER_PORT}, web ${CSQTT_WEB_PORT} (официальный deploy.sh)"
     echo "  web user: ${CSQTT_WEB_USER}"
     echo "  web pass: ${CSQTT_WEB_PASS}"
+    echo "  VPN pass: ${CSQTT_MAIN_PASS}"
     echo "Учётки:       ${CRED_FILE}"
 }
 
@@ -504,9 +503,12 @@ main() {
         write-unit|--write-unit)
             [ -d "$SRC_DIR" ] || fetch_sources
             write_unit
-            write_csqtt_unit
             systemctl restart wdtt
-            systemctl restart csqtt 2>/dev/null || true
+            if [ "$SKIP_CSQTT" != "1" ] && { [ -x "$CSQTT_BIN" ] || [ -f /tmp/csqtt ]; }; then
+                stage_csqtt_binary_for_deploy
+                prepare_csqtt_deploy_files
+                run_official_csqtt_deploy
+            fi
             ;;
         *) die "команды: install | update | write-unit" ;;
     esac
