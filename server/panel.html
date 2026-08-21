@@ -13,12 +13,15 @@ header b{color:var(--acc)}
 a{color:var(--acc)}
 header .row a, header .row button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border-radius:8px;text-decoration:none;font:inherit;cursor:pointer}
 header .row a{background:transparent;border:1px solid var(--line);color:var(--txt)}
-.hashes{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;width:100%}
+.hashes{display:grid;grid-template-columns:1fr;gap:8px;width:100%}
+@media (min-width:640px){.hashes{grid-template-columns:1fr 1fr}}
 main{padding:20px;max-width:1100px;margin:0 auto}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
 .card span{display:block;color:var(--mut);font-size:.8rem}
 .card strong{font-size:1.2rem}
+.sec{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:22px 0 10px}
+.sec h2{margin:0;font-size:1rem}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--mut);font-weight:600;font-size:.8rem}
@@ -26,12 +29,23 @@ button,input,textarea{font:inherit}
 button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
 button.bad{background:#7f1d1d}
-input,textarea{background:#0f1419;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px}
+input,textarea{width:100%;background:#0f1419;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px}
+label{display:block;margin:0 0 4px;color:var(--mut);font-size:.8rem}
+.field{margin:0 0 12px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 pre{background:#0b0f14;padding:12px;border-radius:8px;overflow:auto;max-height:320px;font-size:12px}
 .link{font-size:12px;word-break:break-all;color:var(--mut)}
 .on{color:var(--ok)} .off{color:var(--mut)}
 h2{font-size:1rem;margin:22px 0 10px}
+.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal[hidden]{display:none}
+.modal-card{background:var(--card);border:1px solid var(--line);border-radius:12px;width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:18px;box-shadow:0 16px 48px #0008}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.modal-head b{font-size:1.05rem}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.created-box{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:12px;margin:10px 0}
+.created-box code{display:block;margin:6px 0 10px;word-break:break-all}
+body.modal-open{overflow:hidden}
 </style>
 </head>
 <body>
@@ -45,21 +59,10 @@ h2{font-size:1rem;margin:22px 0 10px}
 </header>
 <main>
 <div class="grid" id="stats"></div>
+<div class="sec">
 <h2>Клиенты</h2>
-<form onsubmit="return create(event)">
-<div class="row">
-<input name="label" placeholder="Имя" required>
-<input name="days" type="number" min="1" max="365" value="30" title="Срок, дни" style="width:90px">
-<button type="submit">Создать</button>
+<button type="button" onclick="openCreate()">Создать</button>
 </div>
-<div class="hashes">
-<input name="vk_hash1" placeholder="VK hash 1" required>
-<input name="vk_hash2" placeholder="VK hash 2 (необязательно)">
-<input name="vk_hash3" placeholder="VK hash 3 (необязательно)">
-<input name="vk_hash4" placeholder="VK hash 4 (необязательно)">
-</div>
-</form>
-<p id="cerr" class="off"></p>
 <div class="card" style="overflow:auto">
 <table>
 <thead><tr><th>Имя</th><th>Пароль</th><th>Трафик</th><th>Устройства</th><th>Ссылка</th><th></th></tr></thead>
@@ -70,7 +73,58 @@ h2{font-size:1rem;margin:22px 0 10px}
 <button class="ghost" onclick="logs()">Обновить лог</button>
 <pre id="log"></pre>
 </main>
+<div id="modal" class="modal" hidden onclick="if(event.target===this)closeCreate()">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-head">
+      <b id="modal-title">Новый клиент</b>
+      <button class="ghost" type="button" onclick="closeCreate()">Закрыть</button>
+    </div>
+    <form id="create-form" onsubmit="return create(event)">
+      <div class="field">
+        <label for="f-label">Имя</label>
+        <input id="f-label" name="label" placeholder="Имя" required>
+      </div>
+      <div class="field">
+        <label for="f-days">Срок, дни</label>
+        <input id="f-days" name="days" type="number" min="1" max="365" value="30">
+      </div>
+      <div class="field">
+        <label>VK hash — до 4</label>
+        <div class="hashes">
+          <input name="vk_hash1" placeholder="VK hash 1" required>
+          <input name="vk_hash2" placeholder="VK hash 2 (необязательно)">
+          <input name="vk_hash3" placeholder="VK hash 3 (необязательно)">
+          <input name="vk_hash4" placeholder="VK hash 4 (необязательно)">
+        </div>
+      </div>
+      <p id="cerr" class="off"></p>
+      <div class="modal-actions">
+        <button class="ghost" type="button" onclick="closeCreate()">Отмена</button>
+        <button type="submit">Создать</button>
+      </div>
+    </form>
+    <div id="created" hidden>
+      <p class="on">Клиент создан. Импортируйте ссылку как новый профиль, не подставляйте пароль в профиль владельца.</p>
+      <div class="created-box">
+        <span class="off">Пароль</span>
+        <code id="created-pass"></code>
+        <button class="ghost" type="button" id="copy-pass-btn" onclick="copyCreated('pass', this)">копировать пароль</button>
+      </div>
+      <div class="created-box">
+        <span class="off">Ссылка</span>
+        <code id="created-link" class="link"></code>
+        <button class="ghost" type="button" id="copy-link-btn" onclick="copyCreated('link', this)">копировать ссылку</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" onclick="closeCreate()">Готово</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
+let clientRows = [];
+let createdPass = '';
+let createdLink = '';
 async function api(path, opt){
   const r = await fetch(path, opt);
   if (r.status === 401) { location.href='/login'; throw new Error('auth'); }
@@ -112,16 +166,19 @@ async function refresh(){
   </tr>`;
   }).join('');
 }
-let clientRows = [];
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function copyField(i, key, btn){
   const s = (clientRows[i] && clientRows[i][key]) || '';
-  copyText(s).then(ok => {
-    if (!btn) return;
-    const prev = btn.textContent;
-    btn.textContent = ok ? 'скопировано' : 'ошибка';
-    setTimeout(()=>{ btn.textContent = prev; }, 1200);
-  });
+  copyText(s).then(ok => flashBtn(btn, ok));
+}
+function copyCreated(kind, btn){
+  copyText(kind === 'link' ? createdLink : createdPass).then(ok => flashBtn(btn, ok));
+}
+function flashBtn(btn, ok){
+  if (!btn) return;
+  const prev = btn.textContent;
+  btn.textContent = ok ? 'скопировано' : 'ошибка';
+  setTimeout(()=>{ btn.textContent = prev; }, 1200);
 }
 async function copyText(s){
   s = String(s||'');
@@ -141,9 +198,32 @@ async function copyText(s){
   let ok = false;
   try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
   document.body.removeChild(ta);
-  if (!ok) prompt('Скопируйте ссылку', s);
+  if (!ok) prompt('Скопируйте', s);
   return ok;
 }
+function openCreate(){
+  const modal = document.getElementById('modal');
+  const form = document.getElementById('create-form');
+  const err = document.getElementById('cerr');
+  form.reset();
+  form.days.value = '30';
+  err.textContent = '';
+  err.className = 'off';
+  form.hidden = false;
+  document.getElementById('created').hidden = true;
+  document.getElementById('modal-title').textContent = 'Новый клиент';
+  modal.hidden = false;
+  document.body.classList.add('modal-open');
+  const first = form.querySelector('input[name="label"]');
+  if (first) first.focus();
+}
+function closeCreate(){
+  document.getElementById('modal').hidden = true;
+  document.body.classList.remove('modal-open');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('modal').hidden) closeCreate();
+});
 async function create(e){
   e.preventDefault();
   const err = document.getElementById('cerr');
@@ -160,15 +240,17 @@ async function create(e){
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body
     });
-    e.target.reset();
-    e.target.days.value = '30';
-    if (created.password) {
-      err.className = 'on';
-      err.textContent = 'Создан. Пароль: ' + created.password + ' — импортируйте qwdtt:// ссылку как новый профиль, не подставляйте пароль в профиль владельца.';
-    }
+    createdPass = created.password || '';
+    createdLink = created.qwdtt_link || '';
+    document.getElementById('created-pass').textContent = createdPass;
+    document.getElementById('created-link').textContent = createdLink;
+    e.target.hidden = true;
+    document.getElementById('created').hidden = false;
+    document.getElementById('modal-title').textContent = 'Клиент создан';
     await refresh();
   } catch (ex) {
     err.className = 'off';
+    err.style.color = 'var(--bad)';
     err.textContent = 'Не создан: ' + (ex.message || ex);
   }
   return false;

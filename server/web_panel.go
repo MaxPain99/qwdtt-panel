@@ -516,7 +516,12 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 	}
 	dbMutex.Unlock()
 	log.Printf("[WEB] создан клиент %s (%s)", label, maskPassword(newPass))
-	writePanelJSON(w, map[string]string{"password": newPass})
+	_, qwdtt := panelClientLink(newPass, vkHash)
+	writePanelJSON(w, map[string]string{
+		"password":   newPass,
+		"qwdtt_link": qwdtt,
+		"label":      label,
+	})
 }
 
 func handlePanelDeleteClient(w http.ResponseWriter, r *http.Request) {
