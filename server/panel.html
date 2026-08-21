@@ -129,7 +129,7 @@ h2{font-size:1rem;margin:22px 0 10px}
       <div class="field days-row">
         <label for="f-days">Срок, дни</label>
         <input id="f-days" name="days" type="number" min="1" max="365" value="30">
-        <label class="check"><input type="checkbox" id="f-unlimited" onchange="toggleUnlimited()"> безлимит</label>
+        <label class="check"><input type="checkbox" id="f-unlimited" onchange="toggleUnlimited()"> Неограничено</label>
       </div>
       <div class="field">
         <label>VK hash — до 4</label>
@@ -205,7 +205,7 @@ async function refresh(){
     const n = String(c.hashes||'').split(',').filter(Boolean).length;
     const hashLine = c.owner ? '' : (n ? `<div class="off">${n===1?'1 хэш':n+' хэша'}</div>` : '');
     return `<tr>
-    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'безлимит')}</div>${hashLine}</td>
+    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'Неограничено')}</div>${hashLine}</td>
     <td><code>${esc(c.password)}</code> <button class="ghost" type="button" onclick="copyField(${i},'password',this)">копировать</button></td>
     <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
     <td>${c.active_devices||0}/${c.max_devices||1}</td>
@@ -266,7 +266,7 @@ function toggleUnlimited(){
   days.disabled = unlim.checked;
   if (unlim.checked) {
     days.value = '';
-    days.placeholder = 'безлимит';
+    days.placeholder = 'Неограничено';
   } else {
     if (!days.value) days.value = '30';
     days.placeholder = '';
@@ -389,7 +389,7 @@ async function loadCsqttClients(){
     const n = String(c.hashes||'').split(',').filter(Boolean).length;
     const hashLine = c.owner ? '' : (n ? `<div class="off">${n===1?'1 хэш':n+' хэша'}</div>` : '');
     return `<tr>
-    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'безлимит')}</div>${hashLine}</td>
+    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'Неограничено')}</div>${hashLine}</td>
     <td><code>${esc(c.password)}</code> <button class="ghost" type="button" onclick="copyCsqtt(${i},'password',this)">копировать</button></td>
     <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
     <td>${c.sessions||0}</td>
