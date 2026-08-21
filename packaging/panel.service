@@ -1,0 +1,22 @@
+[Unit]
+Description=qWDTT HTTPS Panel + SOCKS5 TPROXY
+After=network-online.target wdtt.service
+Wants=network-online.target
+# CSQTT optional; panel bridges when available
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/env bash -c "if command -v iptables >/dev/null 2>&1; then iptables -C INPUT -p tcp --dport 46102 -m comment --comment QWDTT_PANEL -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 46102 -m comment --comment QWDTT_PANEL -j ACCEPT; fi"
+ExecStart=/usr/local/bin/qwdtt-panel -listen 0.0.0.0:46102 -config-dir /etc/wdtt -web-user admin -web-pass-file /etc/wdtt/web.password -wdtt-admin https://127.0.0.1:56002 -wdtt-admin-token-file /etc/wdtt/admin.token
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+UMask=0077
+# SOCKS TPROXY needs CAP_NET_ADMIN/RAW (or root). Keep root for iptables + transparent proxy.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+# CSQTT env: ReadOnlyPaths=/etc/csqtt if ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

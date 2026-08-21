@@ -6,23 +6,28 @@ qWDTT — Android-приложение для подключения к собс
 
 ## Веб-панель (этот репозиторий)
 
-HTTPS-панель в том же процессе, что и `wdtt-server`. Официальный APK qWDTT не меняется. Клиентов CSQTT панель берёт с локального API `csqtt` (`https://127.0.0.1:46002`): логин из `/etc/csqtt/csqtt.env` (`CSQTT_WEB_USER` / `CSQTT_WEB_PASS`), без отдельной формы подключения. Список, создание, ссылки `csqtt://`, удаление — через тот же API.
+Два сервиса:
 
-SOCKS5 один на оба туннеля: TPROXY с `wdtt0`, `wdttraw0` и `csqtt1` в один локальный Xray/sing-box. При включении панель выключает SOCKS в CSQTT, чтобы не было двух маршрутов.
+| Unit | Бинарь | Роль |
+|------|--------|------|
+| `wdtt.service` | `wdtt-server` | VPN (DTLS/WG/raw) + **admin API** `:56002` |
+| `qwdtt-panel.service` | `qwdtt-panel` | HTTPS панель `:46102` + **SOCKS5 TPROXY** + мост CSQTT |
 
-Если вкладка CSQTT пишет «не найден» или «нет доступа к …/csqtt.env»: убедитесь, что `csqtt` запущен, в `/etc/csqtt/csqtt.env` есть `CSQTT_WEB_PASS`, и процесс `wdtt-server` может читать этот файл (в unit достаточно `ReadOnlyPaths=/etc/csqtt`; `ProtectHome=true` путь `/etc` не закрывает). `install.sh update` unit не переписывает — при необходимости добавьте `ReadOnlyPaths` вручную и `systemctl daemon-reload && systemctl restart wdtt`.
+Официальные APK (qWDTT / CSQTT) не меняются. Обновление `wdtt-server` с APK больше не затирает панель — unit панели отдельный. CRUD клиентов qWDTT панель делает через admin API; CSQTT — через локальный API `https://127.0.0.1:46002` (логин из `/etc/csqtt/csqtt.env`).
 
-Установка на VPS (qWDTT-панель **и** CSQTT рядом):
+**SOCKS5** остаётся: один TPROXY на `wdtt0` / `wdttraw0` / `csqtt1` → локальный Xray/sing-box. Включается в UI панели; при активации гасится встроенный SOCKS CSQTT.
+
+Если вкладка CSQTT «не найден»: `csqtt` запущен, есть `CSQTT_WEB_PASS` в `/etc/csqtt/csqtt.env`, процесс `qwdtt-panel` читает `/etc/csqtt` (при `ProtectSystem=strict` — `ReadOnlyPaths=/etc/csqtt` в `qwdtt-panel.service`).
+
+Установка на VPS:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 ```
 
-Поднимаются `wdtt.service` (`:46102`) и CSQTT через официальный [`deploy.sh`](https://github.com/amurcanov/csqtt/blob/main/app/src/main/assets/deploy.sh) (peer UDP `:46000`, web `:46002`, TUN `csqtt1`) — тот же путь, что с Android-клиента. Бинарник: `/tmp/csqtt`, `CSQTT_BIN_URL`, уже стоящий `/usr/local/bin/csqtt`, иначе сборка из исходников (`CSQTT_BUILD=1`). Пропуск: `SKIP_CSQTT=1`. Учётки: `/etc/wdtt/credentials.txt`.
+Панель: `https://IP:46102` (self-signed). Учётки: `/etc/wdtt/credentials.txt`.
 
-Панель: `https://IP:46102` (self-signed). Запуск qWDTT — SpaceNeuroX `wdtt.service` плюс `-web-port 46102` и INPUT TCP 46102.
-
-Обновление обоих: `sudo bash /opt/qwdtt-panel/install.sh update` (живые unit-файлы не переписывает). Эталонные unit: `install.sh write-unit`.
+Обновление: `sudo bash /opt/qwdtt-panel/install.sh update` (ставит оба бинаря и оба unit). После обновления qWDTT **только с APK** перезапустите/проверьте `qwdtt-panel` и что у `wdtt` есть `-admin-listen` + токен (иначе панель не создаст клиентов).
 
 Не пушьте эту ветку в SpaceNeuroX — только в `MaxPain99/qwdtt-panel`.
 

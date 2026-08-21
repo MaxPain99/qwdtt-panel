@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-# qWDTT HTTPS panel + CSQTT side-by-side installer.
-# qWDTT: packaging/wdtt.service (SpaceNeuroX + -web-port 46102).
-# CSQTT: официальный deploy.sh из amurcanov/csqtt (сеть/unit/NAT), как с Android.
-# Бинарник: CSQTT_BIN_URL | /tmp/csqtt | уже стоящий | сборка cargo (glibc).
+# qWDTT + CSQTT installer.
+# wdtt-server — VPN + admin API (обновляем с APK / своим бинарником).
+# qwdtt-panel — HTTPS :46102 + SOCKS5 TPROXY + мост CSQTT (отдельный unit).
+# CSQTT: deploy.sh / binary / cargo (см. ниже).
 #
 #   curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 set -euo pipefail
 
-readonly SCRIPT_VERSION="3.4"
+readonly SCRIPT_VERSION="4.0"
 readonly REPO_URL="${QWDTT_REPO:-https://github.com/MaxPain99/qwdtt-panel.git}"
 readonly REPO_BRANCH="${QWDTT_BRANCH:-master}"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
 readonly BIN_PATH="/usr/local/bin/wdtt-server"
+readonly PANEL_BIN_PATH="/usr/local/bin/qwdtt-panel"
 readonly CONFIG_DIR="/etc/wdtt"
 readonly LOG_FILE="/var/log/qwdtt-panel-install.log"
 readonly CRED_FILE="${CONFIG_DIR}/credentials.txt"
 readonly UNIT_PATH="/etc/systemd/system/wdtt.service"
+readonly PANEL_UNIT_PATH="/etc/systemd/system/qwdtt-panel.service"
 readonly GO_VERSION="${QWDTT_GO_VERSION:-1.25.0}"
 
 readonly CSQTT_REPO_URL="${CSQTT_REPO:-https://github.com/amurcanov/csqtt.git}"
@@ -157,10 +159,12 @@ build_server() {
     (
         cd "$SRC_DIR"
         go build -trimpath -ldflags '-s -w' -o /tmp/wdtt-server ./server
+        go build -tags qwdtt_panel -trimpath -ldflags '-s -w' -o /tmp/qwdtt-panel ./server
     ) >>"$LOG_FILE" 2>&1 || die "сборка не удалась, см. $LOG_FILE"
     install -m 0755 /tmp/wdtt-server "$BIN_PATH"
-    rm -f /tmp/wdtt-server
-    log_info "бинарник $BIN_PATH"
+    install -m 0755 /tmp/qwdtt-panel "$PANEL_BIN_PATH"
+    rm -f /tmp/wdtt-server /tmp/qwdtt-panel
+    log_info "бинарники $BIN_PATH + $PANEL_BIN_PATH"
 }
 
 seed_secrets() {
@@ -215,12 +219,15 @@ EOF
 
 write_unit() {
     local src="${SRC_DIR}/packaging/wdtt.service"
+    local panel_src="${SRC_DIR}/packaging/panel.service"
     [ -f "$src" ] || die "нет $src"
+    [ -f "$panel_src" ] || die "нет $panel_src"
     install -m 0644 "$src" "$UNIT_PATH"
+    install -m 0644 "$panel_src" "$PANEL_UNIT_PATH"
     systemctl daemon-reload
-    systemctl unmask wdtt >/dev/null 2>&1 || true
-    systemctl enable wdtt >/dev/null 2>&1 || true
-    log_info "unit wdtt: stock SpaceNeuroX + -web-port ${WEB_PORT}"
+    systemctl unmask wdtt qwdtt-panel >/dev/null 2>&1 || true
+    systemctl enable wdtt qwdtt-panel >/dev/null 2>&1 || true
+    log_info "units: wdtt (VPN+admin) + qwdtt-panel (HTTPS:${WEB_PORT}+SOCKS)"
 }
 
 ensure_rust() {
@@ -531,20 +538,27 @@ do_install() {
     write_unit
     open_firewall
     systemctl restart wdtt
+    sleep 1
+    systemctl restart qwdtt-panel
     sleep 2
     if ! systemctl is-active --quiet wdtt; then
         log_error "wdtt не запустился"
         journalctl -u wdtt -n 40 --no-pager | tee -a "$LOG_FILE" || true
         exit 1
     fi
+    if ! systemctl is-active --quiet qwdtt-panel; then
+        log_error "qwdtt-panel не запустился"
+        journalctl -u qwdtt-panel -n 40 --no-pager | tee -a "$LOG_FILE" || true
+        exit 1
+    fi
     install_csqtt_stack
     write_credentials
     echo
-    echo "qWDTT панель: https://$(public_ip):${WEB_PORT}"
+    echo "qWDTT панель: https://$(public_ip):${WEB_PORT}  (сервис qwdtt-panel + SOCKS5)"
     echo "  логин:  ${WEB_USER}"
     echo "  пароль: ${WEB_PASS}"
     echo "  VPN:    ${OWNER_PASS}"
-    echo "CSQTT:        peer UDP ${CSQTT_PEER_PORT}, web ${CSQTT_WEB_PORT} (официальный deploy.sh)"
+    echo "CSQTT:        peer UDP ${CSQTT_PEER_PORT}, web ${CSQTT_WEB_PORT}"
     echo "  web user: ${CSQTT_WEB_USER}"
     echo "  web pass: ${CSQTT_WEB_PASS}"
     echo "  VPN pass: ${CSQTT_MAIN_PASS}"
@@ -560,8 +574,12 @@ do_update() {
     build_server
     mkdir -p /usr/local/lib/qwdtt
     [ -f "${SRC_DIR}/server/update-server.sh" ] && install -m 0755 "${SRC_DIR}/server/update-server.sh" /usr/local/lib/qwdtt/update-server.sh
-    log_info "wdtt.service не трогаю"
+    seed_secrets
+    # Миграция на split: ставим panel unit, wdtt без -web-port
+    write_unit
     systemctl restart wdtt
+    sleep 1
+    systemctl restart qwdtt-panel
     if [ -s "${CONFIG_DIR}/web.password" ]; then
         WEB_PASS="$(tr -d '\r\n' < "${CONFIG_DIR}/web.password")"
     fi
@@ -573,7 +591,7 @@ do_update() {
     [ -n "${OWNER_PASS:-}" ] || OWNER_PASS="$(tr -d '\r\n' < "${CONFIG_DIR}/main.password" 2>/dev/null || true)"
     [ -n "${WEB_PASS:-}" ] || WEB_PASS="$(tr -d '\r\n' < "${CONFIG_DIR}/web.password" 2>/dev/null || true)"
     write_credentials
-    log_info "обновлено (wdtt + csqtt)"
+    log_info "обновлено (wdtt + qwdtt-panel + csqtt)"
 }
 
 main() {
@@ -585,6 +603,7 @@ main() {
             [ -d "$SRC_DIR" ] || fetch_sources
             write_unit
             systemctl restart wdtt
+            systemctl restart qwdtt-panel
             if [ "$SKIP_CSQTT" != "1" ] && { [ -x "$CSQTT_BIN" ] || [ -f /tmp/csqtt ]; }; then
                 stage_csqtt_binary_for_deploy
                 prepare_csqtt_deploy_files

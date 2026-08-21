@@ -1,3 +1,5 @@
+//go:build !qwdtt_panel
+
 package main
 
 import (
@@ -39,7 +41,9 @@ func main() {
 	botToken := flag.String("bot-token", "", "Telegram Bot Token")
 	botTokenFile := flag.String("bot-token-file", "", "файл Telegram Bot Token")
 	dnsFlag := flag.String("dns", "8.8.8.8", "DNS серверы для клиентов")
-	webPort := flag.Uint("web-port", 46102, "HTTPS-порт панели; 0 = выключено")
+	// Панель вынесена в отдельный бинарь qwdtt-panel. Встроенная — только для
+	// совместимости: -web-port > 0 (SOCKS тогда тоже в этом процессе).
+	webPort := flag.Uint("web-port", 0, "HTTPS-порт встроенной панели; 0 = выключено (рекомендуется qwdtt-panel)")
 	webUser := flag.String("web-user", "admin", "логин веб-панели")
 	webPass := flag.String("web-pass", "", "пароль веб-панели (пусто = из panel.json / web.password)")
 	webPassFile := flag.String("web-pass-file", "", "файл пароля веб-панели")
@@ -80,7 +84,9 @@ func main() {
 				}
 			} else {
 				cancel()
-				socksDeactivate()
+				if *webPort > 0 {
+					socksDeactivate()
+				}
 				dbMutex.Lock()
 				flushRawDeviceTrafficLocked()
 				saveDB()
@@ -287,7 +293,9 @@ func main() {
 		}()
 	}
 
-	socksRestore()
+	if *webPort > 0 {
+		socksRestore()
+	}
 	log.Println("[SERVER] Готов")
 
 	for {

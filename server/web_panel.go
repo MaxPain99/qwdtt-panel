@@ -357,9 +357,9 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 	if !requirePanelAuth(w, r) {
 		return
 	}
-	up := time.Since(serverStartTime)
+	upStr := formatUptime(time.Since(serverStartTime))
 	if serverStartTime.IsZero() {
-		up = 0
+		upStr = "—"
 	}
 	socksOn, socksTCP, socksUDP, socksHealth := socksSnapshot()
 	csqtt := csqttCachedStatus()
@@ -367,7 +367,6 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 	if stats, ok := csqtt["stats"].(map[string]interface{}); ok {
 		csqttStats = stats
 	}
-	// CSQTT /api/stats: active = sessions.len(), hot_sessions = живые потоки.
 	csqttActive := csqttStatNumber(csqttStats, "hot_sessions")
 	if csqttActive == 0 {
 		csqttActive = csqttStatNumber(csqttStats, "active")
@@ -375,10 +374,26 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 	csqttTotal := csqttStatNumber(csqttStats, "total")
 	csqttUp := csqttStatNumber(csqttStats, "up")
 	csqttDown := csqttStatNumber(csqttStats, "down")
+
 	wdttActive := int64(atomic.LoadInt32(&activeConns))
 	wdttTotal := atomic.LoadInt64(&totalConns)
 	wdttUp := atomic.LoadInt64(&totalBytesFromClient)
 	wdttDown := atomic.LoadInt64(&totalBytesToClient)
+	nat := natType
+	if panelWdttAdminEnabled() {
+		if st := panelAdminStatus(); st != nil {
+			wdttActive = csqttStatNumber(st, "active")
+			wdttTotal = csqttStatNumber(st, "total")
+			wdttUp = csqttStatNumber(st, "up_bytes")
+			wdttDown = csqttStatNumber(st, "down_bytes")
+			if s, ok := st["nat"].(string); ok && s != "" {
+				nat = s
+			}
+			if s, ok := st["uptime"].(string); ok && s != "" {
+				upStr = s
+			}
+		}
+	}
 	writePanelJSON(w, map[string]interface{}{
 		"active":         wdttActive + csqttActive,
 		"total":          wdttTotal + csqttTotal,
@@ -388,8 +403,8 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 		"wdtt_total":     wdttTotal,
 		"wdtt_up":        wdttUp,
 		"wdtt_down":      wdttDown,
-		"uptime":         formatUptime(up),
-		"nat":            natType,
+		"uptime":         upStr,
+		"nat":            nat,
 		"logs_active":    panelLogsEnabled(),
 		"socks_on":       socksOn,
 		"socks_tcp":      socksTCP,
@@ -473,8 +488,97 @@ func parsePanelVkHashes(r *http.Request) (string, error) {
 	return strings.Join(out, ","), nil
 }
 
+func handlePanelClientsViaAdmin(w http.ResponseWriter, r *http.Request) {
+	type row struct {
+		Label         string `json:"label"`
+		Password      string `json:"password"`
+		Owner         bool   `json:"owner"`
+		Up            int64  `json:"up"`
+		Down          int64  `json:"down"`
+		MaxDevices    int    `json:"max_devices"`
+		ActiveDevices int    `json:"active_devices"`
+		Expires       string `json:"expires"`
+		Deactivated   bool   `json:"deactivated"`
+		Hashes        string `json:"hashes"`
+		QWDTTLink     string `json:"qwdtt_link"`
+		WDTTLink      string `json:"wdtt_link"`
+	}
+	if r.Method == http.MethodGet {
+		out := []row{}
+		if owner := panelOwnerPassword(panelDir); owner != "" {
+			wd, q := panelClientLink(owner, "")
+			out = append(out, row{Label: "владелец", Password: owner, Owner: true, QWDTTLink: q, WDTTLink: wd})
+		}
+		list, err := panelAdminListPasswords()
+		if err != nil {
+			writePanelError(w, http.StatusBadGateway, "wdtt admin: "+err.Error())
+			return
+		}
+		for _, e := range list {
+			exp := ""
+			if e.ExpiresAt > 0 {
+				exp = time.Unix(e.ExpiresAt, 0).Format("2006-01-02")
+			}
+			wdtt, qwdtt := panelClientLink(e.Password, e.VkHash)
+			out = append(out, row{
+				Label:         e.Label,
+				Password:      e.Password,
+				Up:            e.UpBytes,
+				Down:          e.DownBytes,
+				MaxDevices:    e.MaxDevices,
+				ActiveDevices: e.ActiveDevices,
+				Expires:       exp,
+				Deactivated:   e.IsDeactivated,
+				Hashes:        e.VkHash,
+				QWDTTLink:     qwdtt,
+				WDTTLink:      wdtt,
+			})
+		}
+		writePanelJSON(w, map[string]interface{}{"clients": out})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	vkHash, err := parsePanelVkHashes(r)
+	if err != nil {
+		writePanelError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	days := 30
+	if v := r.FormValue("days"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > 365 {
+			writePanelError(w, http.StatusBadRequest, "days")
+			return
+		}
+		days = n
+	}
+	label := strings.TrimSpace(r.FormValue("label"))
+	view, err := panelAdminCreatePassword(label, vkHash, days, 1)
+	if err != nil {
+		writePanelError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	_, qwdtt := panelClientLink(view.Password, view.VkHash)
+	writePanelJSON(w, map[string]string{
+		"password":   view.Password,
+		"qwdtt_link": qwdtt,
+		"label":      view.Label,
+	})
+}
+
 func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 	if !requirePanelAuth(w, r) {
+		return
+	}
+	if panelWdttAdminEnabled() {
+		handlePanelClientsViaAdmin(w, r)
 		return
 	}
 	if r.Method == http.MethodGet {
@@ -649,6 +753,14 @@ func handlePanelDeleteClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pass := r.FormValue("password")
+	if panelWdttAdminEnabled() {
+		if err := panelAdminDeletePassword(pass); err != nil {
+			writePanelError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writePanelJSON(w, map[string]bool{"ok": true})
+		return
+	}
 	dbMutex.Lock()
 	entry, ok := db.Passwords[pass]
 	if !ok || entry == nil {

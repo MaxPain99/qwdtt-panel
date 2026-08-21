@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -205,8 +206,8 @@ func handleAdminCreatePassword(w http.ResponseWriter, r *http.Request) {
 	days := 30
 	if v := r.FormValue("days"); v != "" {
 		parsed, err := strconv.Atoi(v)
-		if err != nil || parsed < 1 || parsed > 365 {
-			writeAdminError(w, http.StatusBadRequest, "days must be between 1 and 365")
+		if err != nil || parsed < 0 || parsed > 365 {
+			writeAdminError(w, http.StatusBadRequest, "days must be between 0 and 365 (0 = unlimited)")
 			return
 		}
 		days = parsed
@@ -258,9 +259,13 @@ func handleAdminCreatePassword(w http.ResponseWriter, r *http.Request) {
 	if label == "" {
 		label = nextPasswordLabel()
 	}
+	expiresAt := int64(0)
+	if days > 0 {
+		expiresAt = time.Now().Add(time.Duration(days) * 24 * time.Hour).Unix()
+	}
 	entry := &PasswordEntry{
 		Label:      label,
-		ExpiresAt:  time.Now().Add(time.Duration(days) * 24 * time.Hour).Unix(),
+		ExpiresAt:  expiresAt,
 		MaxDevices: maxDevices,
 		VkHash:     vkHash,
 		Ports:      ports,
@@ -553,6 +558,7 @@ func handleAdminUnbindDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerAdminAPIRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/admin/status", handleAdminStatus)
 	mux.HandleFunc("/admin/passwords", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -571,4 +577,32 @@ func registerAdminAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/passwords/delete", handleAdminDeletePassword)
 	mux.HandleFunc("/admin/passwords/update", handleAdminUpdatePassword)
 	mux.HandleFunc("/admin/passwords/unbind-device", handleAdminUnbindDevice)
+}
+
+func handleAdminStatus(w http.ResponseWriter, r *http.Request) {
+	setAdminCORSHeaders(w, "GET")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !adminAuthorized(r) {
+		writeAdminError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeAdminError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	up := time.Since(serverStartTime)
+	if serverStartTime.IsZero() {
+		up = 0
+	}
+	writeAdminJSON(w, http.StatusOK, map[string]interface{}{
+		"active":     atomic.LoadInt32(&activeConns),
+		"total":      atomic.LoadInt64(&totalConns),
+		"up_bytes":   atomic.LoadInt64(&totalBytesFromClient),
+		"down_bytes": atomic.LoadInt64(&totalBytesToClient),
+		"nat":        natType,
+		"uptime":     formatUptime(up),
+	})
 }
