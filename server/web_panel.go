@@ -148,7 +148,9 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/csqtt/clients", handlePanelCsqttClients)
 	mux.HandleFunc("/api/csqtt/clients/delete", handlePanelCsqttDelete)
 	mux.HandleFunc("/api/csqtt/clients/toggle", handlePanelCsqttToggle)
-	mux.HandleFunc("/api/reboot", handlePanelReboot)
+	mux.HandleFunc("/api/reboot", handlePanelReboot) // legacy no-op redirect
+	mux.HandleFunc("/api/services", handlePanelServices)
+	mux.HandleFunc("/api/restart", handlePanelRestart)
 	mux.HandleFunc("/api/update-server", handlePanelUpdate)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
@@ -919,19 +921,117 @@ func handlePanelSocksDeactivate(w http.ResponseWriter, r *http.Request) {
 	writePanelJSON(w, socksPanelState())
 }
 
-func handlePanelReboot(w http.ResponseWriter, r *http.Request) {
+func panelUnitActive(unit string) (active bool, state string) {
+	out, err := exec.Command("systemctl", "is-active", unit).CombinedOutput()
+	state = strings.TrimSpace(string(out))
+	if state == "" {
+		state = "unknown"
+	}
+	if err == nil && state == "active" {
+		return true, state
+	}
+	if state == "active" {
+		return true, state
+	}
+	return false, state
+}
+
+func panelServiceSnapshot() map[string]interface{} {
+	wdttOK, wdttState := panelUnitActive("wdtt")
+	csqttOK, csqttState := panelUnitActive("csqtt")
+	panelOK, panelState := panelUnitActive("qwdtt-panel")
+	csqttAPI := false
+	if st := csqttCachedStatus(); st != nil {
+		if v, ok := st["connected"].(bool); ok {
+			csqttAPI = v
+		}
+	}
+	adminOK := false
+	if panelWdttAdminEnabled() {
+		adminOK = panelAdminStatus() != nil
+	}
+	return map[string]interface{}{
+		"qwdtt": map[string]interface{}{
+			"unit":     "wdtt",
+			"active":   wdttOK,
+			"state":    wdttState,
+			"admin_ok": adminOK,
+		},
+		"csqtt": map[string]interface{}{
+			"unit":   "csqtt",
+			"active": csqttOK,
+			"state":  csqttState,
+			"api_ok": csqttAPI,
+		},
+		"panel": map[string]interface{}{
+			"unit":   "qwdtt-panel",
+			"active": panelOK,
+			"state":  panelState,
+		},
+	}
+}
+
+func handlePanelServices(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	writePanelJSON(w, panelServiceSnapshot())
+}
+
+func handlePanelRestart(w http.ResponseWriter, r *http.Request) {
 	if !requirePanelAuth(w, r) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		http.Error(w, "method", http.StatusMethodNotAllowed)
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
 		return
 	}
-	writePanelJSON(w, map[string]bool{"ok": true})
-	go func() {
-		time.Sleep(time.Second)
-		exec.Command("systemctl", "reboot").Run()
-	}()
+	_ = r.ParseForm()
+	target := strings.ToLower(strings.TrimSpace(r.FormValue("target")))
+	unit := ""
+	switch target {
+	case "qwdtt", "wdtt":
+		unit = "wdtt"
+		target = "qwdtt"
+	case "csqtt":
+		unit = "csqtt"
+	case "panel", "qwdtt-panel":
+		unit = "qwdtt-panel"
+		target = "panel"
+	default:
+		writePanelError(w, http.StatusBadRequest, "target: qwdtt | csqtt | panel")
+		return
+	}
+	cmd := exec.Command("systemctl", "restart", unit)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		writePanelError(w, http.StatusBadGateway, msg)
+		return
+	}
+	time.Sleep(400 * time.Millisecond)
+	snap := panelServiceSnapshot()
+	writePanelJSON(w, map[string]interface{}{
+		"ok":       true,
+		"target":   target,
+		"unit":     unit,
+		"services": snap,
+	})
+}
+
+func handlePanelReboot(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	// VPS reboot removed — use /api/restart
+	writePanelError(w, http.StatusGone, "используйте перезапуск сервисов")
 }
 
 func handlePanelUpdate(w http.ResponseWriter, r *http.Request) {

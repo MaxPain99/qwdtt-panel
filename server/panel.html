@@ -238,6 +238,15 @@ html[data-theme="light"] .field input{background:#fff}
 html[data-theme="light"] .update-card{background:#f7f9fc}
 .update-card h4{margin:0 0 6px;font-size:.92rem}
 .update-card p{margin:0 0 12px;color:var(--muted);font-size:.84rem;line-height:1.45}
+.svc-list{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.svc-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:12px 14px;border-radius:14px;border:1px solid var(--line);
+  background:rgba(255,255,255,.03);
+}
+html[data-theme="light"] .svc-row{background:#f7f9fc}
+.svc-name{font-weight:800;margin-bottom:4px}
+.svc-unit{font-weight:600;color:var(--muted);font-size:.8rem;margin-left:6px}
 code{
   font-family:var(--mono);font-size:.84em;
   background:var(--blue-soft);color:var(--blue);
@@ -367,15 +376,41 @@ pre{
       </div>
 
       <div class="panel">
+        <h3>Сервисы</h3>
+        <p class="hint">Статус unit’ов и перезапуск без перезагрузки VPS.</p>
+        <div class="svc-list">
+          <div class="svc-row">
+            <div>
+              <div class="svc-name">qWDTT <span class="svc-unit">wdtt.service</span></div>
+              <p id="svc-qwdtt" class="status off">…</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="restartSvc('qwdtt')">Перезапустить</button>
+          </div>
+          <div class="svc-row">
+            <div>
+              <div class="svc-name">CSQTT <span class="svc-unit">csqtt.service</span></div>
+              <p id="svc-csqtt" class="status off">…</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="restartSvc('csqtt')">Перезапустить</button>
+          </div>
+          <div class="svc-row">
+            <div>
+              <div class="svc-name">Панель <span class="svc-unit">qwdtt-panel.service</span></div>
+              <p id="svc-panel" class="status off">…</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="restartSvc('panel')">Перезапустить</button>
+          </div>
+        </div>
+        <p id="svc-action" class="status off"></p>
+      </div>
+
+      <div class="panel">
         <h3>Обновление с GitHub</h3>
         <p class="hint">Отдельно: сервер qWDTT, сервер CSQTT и эта панель. Лог: <code>/var/log/qwdtt-panel-update.log</code></p>
         <div class="row" style="margin-bottom:12px">
           <button class="btn" type="button" onclick="upd('qwdtt')">Сервер qWDTT</button>
           <button class="btn btn-ghost" type="button" onclick="upd('csqtt')">Сервер CSQTT</button>
           <button class="btn" type="button" onclick="upd('panel')">Панель</button>
-        </div>
-        <div class="row">
-          <button class="btn btn-ghost" type="button" onclick="reboot()">Перезагрузить VPS</button>
         </div>
         <p id="upd-status" class="status off"></p>
       </div>
@@ -389,6 +424,7 @@ pre{
 
       <div id="settings-qwdtt" class="panel">
         <h3>qWDTT</h3>
+        <p id="svc-qwdtt-detail" class="status off"></p>
         <p class="hint">VPN и admin API — сервис <b>wdtt</b> (TUN <b>10.66.66.0/24</b>). Панель — <b>qwdtt-panel</b>.</p>
       </div>
 
@@ -515,7 +551,7 @@ function switchNav(name){
     document.getElementById('nav-'+id).classList.toggle('active', id === name);
   });
   if (name === 'clients' && clientKind === 'csqtt') loadCsqtt();
-  if (name === 'settings') { loadSocks(); loadCsqttSettings(); }
+  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); }
   if (name === 'logs') logs();
 }
 
@@ -736,9 +772,16 @@ async function loadCsqttSettings(){
   link.href = location.protocol + '//' + location.hostname + ':46002';
   try {
     const d = await api('/api/csqtt');
-    if (d.connected) {
+    const svc = await api('/api/services').catch(()=>null);
+    const unitOk = svc && svc.csqtt && svc.csqtt.active;
+    if (d.connected || unitOk) {
       st.className = 'status on';
-      st.textContent = d.iface_up ? 'Связь есть · csqtt1' : 'Связь есть';
+      const bits = [];
+      if (unitOk) bits.push('csqtt.service активен');
+      else bits.push('unit не active');
+      if (d.connected) bits.push(d.iface_up ? 'API · csqtt1' : 'API OK');
+      else bits.push('API нет связи');
+      st.textContent = bits.join(' · ');
     } else {
       st.className = 'status bad';
       st.textContent = d.error || 'CSQTT недоступен';
@@ -868,9 +911,62 @@ async function upd(target){
     alert(ex.message || ex);
   }
 }
-async function reboot(){
-  if (!confirm('Перезагрузить VPS?')) return;
-  await api('/api/reboot', {method:'POST'});
+async function loadServices(){
+  const map = {
+    qwdtt: document.getElementById('svc-qwdtt'),
+    csqtt: document.getElementById('svc-csqtt'),
+    panel: document.getElementById('svc-panel')
+  };
+  const detail = document.getElementById('svc-qwdtt-detail');
+  try {
+    const d = await api('/api/services');
+    const paint = (key, el, extra) => {
+      if (!el) return;
+      const s = d[key] || {};
+      const ok = !!s.active;
+      el.className = 'status ' + (ok ? 'on' : 'bad');
+      let t = ok ? 'работает ('+ (s.state||'active') +')' : 'не работает ('+ (s.state||'inactive') +')';
+      if (extra) t += extra;
+      el.textContent = t;
+    };
+    paint('qwdtt', map.qwdtt, d.qwdtt && d.qwdtt.admin_ok ? ' · admin API OK' : (d.qwdtt && d.qwdtt.active ? ' · admin API нет' : ''));
+    paint('csqtt', map.csqtt, d.csqtt && d.csqtt.api_ok ? ' · API OK' : (d.csqtt && d.csqtt.active ? ' · API нет' : ''));
+    paint('panel', map.panel, '');
+    if (detail) {
+      const s = d.qwdtt || {};
+      detail.className = 'status ' + (s.active ? 'on' : 'bad');
+      detail.textContent = s.active
+        ? ('wdtt.service активен' + (s.admin_ok ? ', admin API отвечает' : ', admin API недоступен'))
+        : ('wdtt.service: ' + (s.state || 'inactive'));
+    }
+  } catch (ex) {
+    Object.values(map).forEach(el => {
+      if (!el) return;
+      el.className = 'status bad';
+      el.textContent = ex.message || ex;
+    });
+  }
+}
+async function restartSvc(target){
+  const labels = {qwdtt:'qWDTT (wdtt)', csqtt:'CSQTT', panel:'панель'};
+  const label = labels[target] || target;
+  if (!confirm('Перезапустить '+label+'?')) return;
+  const st = document.getElementById('svc-action');
+  if (st) { st.className = 'status on'; st.textContent = 'Перезапускаю '+label+'…'; }
+  try {
+    await api('/api/restart', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({target})
+    });
+    if (st) st.textContent = label + ' перезапущен';
+    await loadServices();
+    if (target === 'csqtt') await loadCsqttSettings();
+    await refresh().catch(()=>{});
+  } catch (ex) {
+    if (st) { st.className = 'status bad'; st.textContent = ex.message || ex; }
+    alert(ex.message || ex);
+  }
 }
 
 refresh().catch(()=>{});
