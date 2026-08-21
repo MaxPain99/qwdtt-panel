@@ -53,32 +53,43 @@ a{color:var(--primary)}
 header{
   position:sticky;top:0;z-index:10;
   display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
-  padding:14px 20px;
-  background:var(--header);
-  backdrop-filter:blur(18px) saturate(1.2);
-  -webkit-backdrop-filter:blur(18px) saturate(1.2);
-  border-bottom:1px solid var(--border);
+  padding:14px 24px;
+  background:rgba(248,250,252,.92);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid rgba(15,23,42,.06);
+  box-shadow:0 1px 0 rgba(255,255,255,.6);
 }
 .brand{
   font-family:var(--font-display);
   font-weight:800;
-  font-size:1.35rem;
-  letter-spacing:-.03em;
-  display:inline-flex;
-  align-items:center;
-  gap:10px;
+  font-size:1.45rem;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  background:linear-gradient(90deg,#0077ff,#38bdf8);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  -webkit-text-fill-color:transparent;
 }
-.brand-dot{
-  width:10px;height:10px;border-radius:50%;
-  background:var(--primary);
-  box-shadow:0 0 0 4px rgba(45,212,191,.18), 0 0 18px var(--primary-glow);
-  animation:pulse-dot 2.4s ease-in-out infinite;
+.brand-meta{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
 }
-@keyframes pulse-dot{
-  0%,100%{box-shadow:0 0 0 4px rgba(45,212,191,.18), 0 0 14px var(--primary-glow)}
-  50%{box-shadow:0 0 0 6px rgba(45,212,191,.28), 0 0 22px rgba(45,212,191,.55)}
+.brand-ver{
+  font-size:.85rem;font-weight:600;color:#0077ff;letter-spacing:.01em;
 }
+.theme-btn{
+  width:36px;height:36px;border-radius:10px;border:1px solid rgba(15,23,42,.08);
+  background:#fff;color:#0077ff;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;
+}
+.theme-btn:hover{background:#f1f5f9}
+.theme-btn svg{width:18px;height:18px}
 .top-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.top-actions .btn-ghost{
+  background:#fff;color:#334155;border:1px solid rgba(15,23,42,.1);box-shadow:none;
+}
+.top-actions .btn-ghost:hover{background:#f8fafc;border-color:rgba(0,119,255,.35);color:#0077ff}
 
 .nav-rail{
   display:inline-flex;gap:0;flex-wrap:nowrap;align-items:center;
@@ -366,14 +377,20 @@ code{
   }
   .tab-btn{padding:10px 14px;font-size:14px;flex:1;text-align:center}
   th:nth-child(3),td:nth-child(3){display:none}
-  .brand{font-size:1.2rem}
+  .brand{font-size:1.15rem;letter-spacing:.02em}
 }
 </style>
 </head>
 <body>
 <header>
-  <div class="brand"><span class="brand-dot" aria-hidden="true"></span>qWDTT</div>
+  <div class="brand">qWDTT / CSQTT</div>
   <div class="top-actions">
+    <div class="brand-meta">
+      <button class="theme-btn" type="button" id="theme-btn" title="Тема" onclick="toggleTheme()" aria-label="Тема">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
+      </button>
+      <span class="brand-ver">panel by MaxPain99</span>
+    </div>
     <button class="btn btn-ghost btn-sm" type="button" onclick="location.href='/logout'">Выйти</button>
   </div>
 </header>
@@ -551,6 +568,20 @@ let createdPass = '';
 let createdLink = '';
 let clientKind = 'qwdtt';
 let nav = 'monitoring';
+
+function toggleTheme(){
+  const dark = document.documentElement.getAttribute('data-theme') !== 'light';
+  // сейчас страница тёмная; «light» — ближе к CSQTT (светлый фон контента)
+  if (dark) {
+    document.documentElement.setAttribute('data-theme','light');
+    document.body.style.background = '#f8fafc';
+    document.body.style.color = '#0f172a';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    document.body.style.background = '';
+    document.body.style.color = '';
+  }
+}
 
 async function api(path, opt){
   const r = await fetch(path, opt);
