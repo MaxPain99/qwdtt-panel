@@ -945,7 +945,7 @@ func handlePanelUpdate(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	target := strings.ToLower(strings.TrimSpace(r.FormValue("target")))
 	switch target {
-	case "qwdtt", "csqtt", "all":
+	case "qwdtt", "panel", "csqtt", "all":
 	default:
 		target = "all"
 	}

@@ -368,11 +368,11 @@ pre{
 
       <div class="panel">
         <h3>Обновление с GitHub</h3>
-        <p class="hint">Сборка из исходников: qWDTT (сервер + панель) и/или CSQTT. Лог: <code>/var/log/qwdtt-panel-update.log</code></p>
+        <p class="hint">Отдельно: сервер qWDTT, сервер CSQTT и эта панель. Лог: <code>/var/log/qwdtt-panel-update.log</code></p>
         <div class="row" style="margin-bottom:12px">
-          <button class="btn" type="button" onclick="upd('qwdtt')">qWDTT + панель</button>
-          <button class="btn btn-ghost" type="button" onclick="upd('csqtt')">CSQTT</button>
-          <button class="btn" type="button" onclick="upd('all')">Оба</button>
+          <button class="btn" type="button" onclick="upd('qwdtt')">Сервер qWDTT</button>
+          <button class="btn btn-ghost" type="button" onclick="upd('csqtt')">Сервер CSQTT</button>
+          <button class="btn" type="button" onclick="upd('panel')">Панель</button>
         </div>
         <div class="row">
           <button class="btn btn-ghost" type="button" onclick="reboot()">Перезагрузить VPS</button>
@@ -845,9 +845,13 @@ async function socksOff(){
   } catch (ex) { showSocksMsg('Не выключен: ' + (ex.message || ex), false); }
 }
 async function upd(target){
-  target = target || 'all';
-  const labels = {qwdtt:'qWDTT + панель', csqtt:'CSQTT', all:'оба модуля'};
-  const label = labels[target] || labels.all;
+  target = target || 'panel';
+  const labels = {
+    qwdtt:'сервер qWDTT (wdtt-server)',
+    csqtt:'сервер CSQTT',
+    panel:'панель qwdtt-panel'
+  };
+  const label = labels[target] || target;
   if (!confirm('Обновить с GitHub: '+label+'?\nСборка может занять несколько минут.')) return;
   const st = document.getElementById('upd-status');
   if (st) { st.className = 'status on'; st.textContent = 'Запущено: '+label+'…'; }

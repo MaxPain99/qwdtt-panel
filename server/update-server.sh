@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # Обновление с панели:
-#   $1 target = qwdtt | csqtt | all
-#   $2 mode   = source | app
-# source — сборка из исходников GitHub
-# app    — как деплой из Android (stock qWDTT / официальный CSQTT deploy.sh)
-# Unit панели qwdtt-panel не удаляется; для qWDTT app восстанавливаем packaging/wdtt.service (admin API).
+#   $1 target = qwdtt | panel | csqtt | all
+#   $2 mode   = source | app  (app только для qwdtt/csqtt)
+# Unit панели qwdtt-panel не удаляется.
 set -euo pipefail
 
 readonly TARGET="${1:-all}"
@@ -72,23 +70,40 @@ restore_units() {
   systemctl enable wdtt qwdtt-panel >/dev/null 2>&1 || true
 }
 
-# --- qWDTT: исходники MaxPain99 (сервер + панель) ---
+# --- qWDTT VPN-сервер (только wdtt-server) ---
 update_qwdtt_source() {
   command -v go >/dev/null 2>&1 || { echo "go не найден"; exit 1; }
   ensure_panel_repo
   (
     cd "$SRC_DIR"
     go build -trimpath -ldflags '-s -w' -o /tmp/wdtt-server ./server
-    go build -tags qwdtt_panel -trimpath -ldflags '-s -w' -o /tmp/qwdtt-panel ./server
   )
   install -m 0755 /tmp/wdtt-server "$BIN_PATH"
-  install -m 0755 /tmp/qwdtt-panel "$PANEL_BIN_PATH"
-  rm -f /tmp/wdtt-server /tmp/qwdtt-panel
-  refresh_helper
-  restore_units
-  echo "qWDTT source: wdtt-server + qwdtt-panel"
+  rm -f /tmp/wdtt-server
+  if [ -f "${SRC_DIR}/packaging/wdtt.service" ]; then
+    install -m 0644 "${SRC_DIR}/packaging/wdtt.service" "$UNIT_PATH"
+    systemctl daemon-reload
+  fi
+  echo "qWDTT: wdtt-server обновлён"
   systemctl restart wdtt
-  sleep 1
+}
+
+# --- панель (только qwdtt-panel) ---
+update_panel_source() {
+  command -v go >/dev/null 2>&1 || { echo "go не найден"; exit 1; }
+  ensure_panel_repo
+  (
+    cd "$SRC_DIR"
+    go build -tags qwdtt_panel -trimpath -ldflags '-s -w' -o /tmp/qwdtt-panel ./server
+  )
+  install -m 0755 /tmp/qwdtt-panel "$PANEL_BIN_PATH"
+  rm -f /tmp/qwdtt-panel
+  refresh_helper
+  if [ -f "${SRC_DIR}/packaging/panel.service" ]; then
+    install -m 0644 "${SRC_DIR}/packaging/panel.service" "$PANEL_UNIT_PATH"
+    systemctl daemon-reload
+  fi
+  echo "панель: qwdtt-panel обновлена"
   systemctl restart qwdtt-panel || true
 }
 
@@ -265,9 +280,11 @@ update_csqtt() {
 
 case "$TARGET" in
   qwdtt) update_qwdtt ;;
+  panel) update_panel_source ;;
   csqtt) update_csqtt ;;
   all|both|"")
     update_qwdtt
+    update_panel_source || echo "панель: ошибка/пропуск (см. лог)"
     update_csqtt || echo "CSQTT: ошибка/пропуск (см. лог)"
     ;;
   *)
