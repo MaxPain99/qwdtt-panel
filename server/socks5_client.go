@@ -241,7 +241,7 @@ type socksPortInfo struct {
 
 func socksReservedPort(port uint16) bool {
 	switch port {
-	case 22, 56000, 56001, 56002, 56003, 46102, 11662:
+	case 22, 46000, 46001, 46002, 56000, 56001, 56002, 56003, 46102, 11662:
 		return true
 	default:
 		return false

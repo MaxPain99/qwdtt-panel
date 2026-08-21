@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -87,6 +88,7 @@ func socksActivate(p SocksProfile) error {
 		cancel:  make(chan struct{}),
 		health:  "ok",
 	}
+	csqttPrepareSharedSocks()
 	if err := e.startListeners(); err != nil {
 		return err
 	}
@@ -104,7 +106,7 @@ func socksActivate(p SocksProfile) error {
 	e.rulesOn.Store(true)
 	socksEng = e
 	go e.healthLoop()
-	log.Printf("[SOCKS] активен %s — трафик с TUN на SOCKS5", socksDialAddr(p))
+	log.Printf("[SOCKS] активен %s — трафик с %s на SOCKS5", socksDialAddr(p), strings.Join(socksIfaces(), ", "))
 	return nil
 }
 
@@ -160,6 +162,7 @@ func (e *socksEngine) healthLoop() {
 					}
 				} else {
 					e.health = "ok"
+					socksEnsureIfaces()
 				}
 				continue
 			}
@@ -444,10 +447,16 @@ func sendTransparentUDP(payload []byte, src, dst *net.UDPAddr) error {
 	return unix.Sendto(fd, payload, 0, rsa)
 }
 
+func socksIfaceNames() []string {
+	return socksIfaces()
+}
+
 func socksIfaces() []string {
 	out := []string{wgIfaceName}
-	if _, err := os.Stat("/sys/class/net/" + rawIfaceName); err == nil {
-		out = append(out, rawIfaceName)
+	for _, name := range []string{rawIfaceName, csqttTunIface} {
+		if _, err := os.Stat("/sys/class/net/" + name); err == nil {
+			out = append(out, name)
+		}
 	}
 	return out
 }
@@ -468,6 +477,7 @@ func socksInstallIptables() error {
 		return errors.New("нет iptables")
 	}
 	socksRemoveIptables()
+	socksClearCsqttTproxy()
 	port := strconv.Itoa(socksTproxyPort)
 	for _, iface := range socksIfaces() {
 		for _, proto := range []string{"tcp", "udp"} {
@@ -487,13 +497,46 @@ func socksInstallIptables() error {
 	return nil
 }
 
+func socksEnsureIfaces() {
+	socksClearCsqttTproxy()
+	if !commandExists("iptables") {
+		return
+	}
+	port := strconv.Itoa(socksTproxyPort)
+	for _, iface := range socksIfaces() {
+		for _, proto := range []string{"tcp", "udp"} {
+			check := []string{"-t", "mangle", "-C", "PREROUTING",
+				"-i", iface, "-p", proto,
+				"-m", "addrtype", "!", "--dst-type", "LOCAL",
+				"-m", "comment", "--comment", socksComment,
+				"-j", "TPROXY", "--on-port", port, "--tproxy-mark", socksMarkSpec,
+			}
+			if _, err := runCmd("iptables", check...); err != nil {
+				args := []string{"-t", "mangle", "-A", "PREROUTING",
+					"-i", iface, "-p", proto,
+					"-m", "addrtype", "!", "--dst-type", "LOCAL",
+					"-m", "comment", "--comment", socksComment,
+					"-j", "TPROXY", "--on-port", port, "--tproxy-mark", socksMarkSpec,
+				}
+				runCmdSilent("iptables", args...)
+			}
+		}
+		inCheck := []string{"-C", "INPUT", "-i", iface, "-m", "mark", "--mark", socksMarkSpec,
+			"-m", "comment", "--comment", socksComment, "-j", "ACCEPT"}
+		if _, err := runCmd("iptables", inCheck...); err != nil {
+			runCmdSilent("iptables", "-I", "INPUT", "-i", iface, "-m", "mark", "--mark", socksMarkSpec,
+				"-m", "comment", "--comment", socksComment, "-j", "ACCEPT")
+		}
+	}
+}
+
 func socksRemoveIptables() {
 	if !commandExists("iptables") {
 		return
 	}
 	port := strconv.Itoa(socksTproxyPort)
 	for i := 0; i < 8; i++ {
-		for _, iface := range []string{wgIfaceName, rawIfaceName} {
+		for _, iface := range []string{wgIfaceName, rawIfaceName, csqttTunIface} {
 			for _, proto := range []string{"tcp", "udp"} {
 				runCmdSilent("iptables", "-t", "mangle", "-D", "PREROUTING",
 					"-i", iface, "-p", proto,
@@ -511,4 +554,60 @@ func socksRemoveNet() {
 	socksRemoveIptables()
 	runCmdSilent("ip", "rule", "del", "fwmark", socksMarkHex, "lookup", socksTable)
 	runCmdSilent("ip", "route", "flush", "table", socksTable)
+}
+
+func socksClearCsqttTproxy() {
+	if !commandExists("iptables") {
+		return
+	}
+	dump, err := runCmd("iptables-save")
+	if err != nil || dump == "" {
+		return
+	}
+	table := ""
+	for _, line := range strings.Split(dump, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "*") {
+			table = strings.TrimPrefix(line, "*")
+			continue
+		}
+		if line == "COMMIT" {
+			table = ""
+			continue
+		}
+		if !strings.HasPrefix(line, "-A ") || !strings.Contains(line, "CSQTT_TPROXY") {
+			continue
+		}
+		args := []string{}
+		if table != "" && table != "filter" {
+			args = append(args, "-t", table)
+		}
+		args = append(args, "-D")
+		args = append(args, splitIptablesArgs(strings.TrimPrefix(line, "-A "))...)
+		runCmdSilent("iptables", args...)
+	}
+	runCmdSilent("ip", "rule", "del", "fwmark", "0x1/0x1", "lookup", "100")
+}
+
+func splitIptablesArgs(s string) []string {
+	var out []string
+	var cur strings.Builder
+	inQ := false
+	for _, r := range s {
+		switch {
+		case r == '"':
+			inQ = !inQ
+		case r == ' ' && !inQ:
+			if cur.Len() > 0 {
+				out = append(out, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
 }

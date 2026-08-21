@@ -110,5 +110,6 @@ func socksPanelState() map[string]interface{} {
 		"udp":          udp,
 		"health":       health,
 		"listening":    listening,
+		"ifaces":       socksIfaceNames(),
 	}
 }

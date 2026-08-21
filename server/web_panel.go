@@ -61,6 +61,9 @@ type panelFileStore struct {
 	SocksOn       bool           `json:"socks_on,omitempty"`
 	SocksProfiles []SocksProfile `json:"socks_profiles,omitempty"`
 	ActiveSocksID string         `json:"active_socks_id,omitempty"`
+	CsqttURL      string         `json:"csqtt_url,omitempty"`
+	CsqttUser     string         `json:"csqtt_user,omitempty"`
+	CsqttPass     string         `json:"csqtt_pass,omitempty"`
 }
 
 var (
@@ -141,6 +144,10 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/socks", handlePanelSocks)
 	mux.HandleFunc("/api/socks/check", handlePanelSocksCheck)
 	mux.HandleFunc("/api/socks/deactivate", handlePanelSocksDeactivate)
+	mux.HandleFunc("/api/csqtt", handlePanelCsqtt)
+	mux.HandleFunc("/api/csqtt/clients", handlePanelCsqttClients)
+	mux.HandleFunc("/api/csqtt/clients/delete", handlePanelCsqttDelete)
+	mux.HandleFunc("/api/csqtt/clients/toggle", handlePanelCsqttToggle)
 	mux.HandleFunc("/api/reboot", handlePanelReboot)
 	mux.HandleFunc("/api/update-server", handlePanelUpdate)
 
@@ -355,18 +362,33 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 		up = 0
 	}
 	socksOn, socksTCP, socksUDP, socksHealth := socksSnapshot()
+	csqtt := csqttCachedStatus()
+	csqttActive := 0
+	if stats, ok := csqtt["stats"].(map[string]interface{}); ok {
+		switch n := stats["active"].(type) {
+		case float64:
+			csqttActive = int(n)
+		case int:
+			csqttActive = n
+		}
+	}
 	writePanelJSON(w, map[string]interface{}{
-		"active":       atomic.LoadInt32(&activeConns),
-		"total":        atomic.LoadInt64(&totalConns),
-		"up_bytes":     atomic.LoadInt64(&totalBytesFromClient),
-		"down_bytes":   atomic.LoadInt64(&totalBytesToClient),
-		"uptime":       formatUptime(up),
-		"nat":          natType,
-		"logs_active":  panelLogsEnabled(),
-		"socks_on":     socksOn,
-		"socks_tcp":    socksTCP,
-		"socks_udp":    socksUDP,
-		"socks_health": socksHealth,
+		"active":         atomic.LoadInt32(&activeConns),
+		"total":          atomic.LoadInt64(&totalConns),
+		"up_bytes":       atomic.LoadInt64(&totalBytesFromClient),
+		"down_bytes":     atomic.LoadInt64(&totalBytesToClient),
+		"uptime":         formatUptime(up),
+		"nat":            natType,
+		"logs_active":    panelLogsEnabled(),
+		"socks_on":       socksOn,
+		"socks_tcp":      socksTCP,
+		"socks_udp":      socksUDP,
+		"socks_health":   socksHealth,
+		"socks_ifaces":   socksIfaceNames(),
+		"csqtt_ok":       csqtt["connected"],
+		"csqtt_active":   csqttActive,
+		"csqtt_error":    csqtt["error"],
+		"csqtt_iface_up": csqtt["iface_up"],
 	})
 }
 

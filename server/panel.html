@@ -10,6 +10,7 @@
 body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--txt)}
 header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line)}
 header b{color:var(--acc)}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 a{color:var(--acc)}
 header .row a, header .row button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border-radius:8px;text-decoration:none;font:inherit;cursor:pointer}
 header .row a{background:transparent;border:1px solid var(--line);color:var(--txt)}
@@ -53,7 +54,7 @@ body.modal-open{overflow:hidden}
 </head>
 <body>
 <header>
-<div>qWDTT <b>панель</b></div>
+<div>qWDTT / CSQTT <b>панель</b></div>
 <div class="row" style="margin:0">
 <button class="ghost" type="button" onclick="upd()">Обновить сервер</button>
 <button class="ghost" type="button" onclick="reboot()">Перезагрузить</button>
@@ -64,18 +65,39 @@ body.modal-open{overflow:hidden}
 <div class="grid" id="stats"></div>
 <div class="sec">
 <h2>Клиенты</h2>
+<div class="tabs">
+<button type="button" id="tab-qwdtt" onclick="showTab('qwdtt')">qWDTT</button>
+<button class="ghost" type="button" id="tab-csqtt" onclick="showTab('csqtt')">CSQTT</button>
 <button type="button" onclick="openCreate()">Создать</button>
 </div>
+</div>
+<div id="pane-qwdtt">
 <div class="card" style="overflow:auto">
 <table>
 <thead><tr><th>Имя</th><th>Пароль</th><th>Трафик</th><th>Устройства</th><th>Ссылка</th><th></th></tr></thead>
 <tbody id="clients"></tbody>
 </table>
 </div>
+</div>
+<div id="pane-csqtt" hidden>
+<form id="csqtt-form" class="row" onsubmit="return saveCsqtt(event)">
+<input name="url" value="https://127.0.0.1:46002" placeholder="https://127.0.0.1:46002">
+<input name="user" value="admin" placeholder="логин панели CSQTT">
+<input name="password" type="password" placeholder="пароль панели CSQTT">
+<button type="submit">Подключить CSQTT</button>
+</form>
+<p id="csqtt-status" class="off"></p>
+<div class="card" style="overflow:auto">
+<table>
+<thead><tr><th>Имя</th><th>Пароль</th><th>Трафик</th><th>Сессии</th><th>Ссылка csqtt://</th><th></th></tr></thead>
+<tbody id="csqtt-clients"></tbody>
+</table>
+</div>
+</div>
 <div class="sec">
 <h2>SOCKS5</h2>
 </div>
-<p class="off">Весь трафик клиентов с TUN идёт в <b>один</b> SOCKS5. Порт задаёте сами: должен быть занят прокси, не свободен и не порты qWDTT. Если у прокси нет логина и пароля — эти поля оставьте пустыми.</p>
+<p class="off">Один SOCKS5 на оба сервиса: трафик с <b>wdtt0</b>, <b>wdttraw0</b> и <b>csqtt1</b> уходит в один Xray/sing-box. Свой SOCKS в панели CSQTT при включении выключается. Порт должен быть занят прокси. Логин и пароль SOCKS — по желанию.</p>
 <form id="socks-form" class="row" onsubmit="return enableSocks(event)">
 <input name="host" value="127.0.0.1" placeholder="127.0.0.1">
 <input name="port" type="number" min="1" max="65535" placeholder="Порт" required style="width:110px;flex:0" oninput="schedulePortCheck()">
@@ -112,13 +134,25 @@ body.modal-open{overflow:hidden}
         <label for="f-days">Срок, дни</label>
         <input id="f-days" name="days" type="number" min="1" max="365" value="30">
       </div>
+      <div class="field" id="peer-field" hidden>
+        <label for="f-peer">Порт CSQTT (peer)</label>
+        <input id="f-peer" name="dtls_port" type="number" min="1" max="65535" value="46000">
+      </div>
       <div class="field">
-        <label>VK hash — до 4</label>
-        <div class="hashes">
+        <label>VK hash</label>
+        <div class="hashes" id="hash-qwdtt">
           <input name="vk_hash1" placeholder="VK hash 1" required>
           <input name="vk_hash2" placeholder="VK hash 2 (необязательно)">
           <input name="vk_hash3" placeholder="VK hash 3 (необязательно)">
           <input name="vk_hash4" placeholder="VK hash 4 (необязательно)">
+        </div>
+        <div class="hashes" id="hash-csqtt" hidden>
+          <input name="c_vk_hash1" placeholder="VK hash 1">
+          <input name="c_vk_hash2" placeholder="VK hash 2 (необязательно)">
+          <input name="c_vk_hash3" placeholder="VK hash 3 (необязательно)">
+          <input name="c_vk_hash4" placeholder="VK hash 4 (необязательно)">
+          <input name="c_vk_hash5" placeholder="VK hash 5 (необязательно)">
+          <input name="c_vk_hash6" placeholder="VK hash 6 (необязательно)">
         </div>
       </div>
       <p id="cerr" class="off"></p>
@@ -147,8 +181,10 @@ body.modal-open{overflow:hidden}
 </div>
 <script>
 let clientRows = [];
+let csqttRows = [];
 let createdPass = '';
 let createdLink = '';
+let clientKind = 'qwdtt';
 async function api(path, opt){
   const r = await fetch(path, opt);
   if (r.status === 401) { location.href='/login'; throw new Error('auth'); }
@@ -174,7 +210,8 @@ async function refresh(){
     ['Даунлинк', fmt(s.down_bytes)],
     ['Uptime', s.uptime],
     ['NAT', s.nat],
-    ['SOCKS5', s.socks_on ? ('вкл TCP '+ (s.socks_tcp||0) +' UDP '+(s.socks_udp||0)) : 'выкл'],
+    ['SOCKS5', s.socks_on ? ('вкл TCP '+ (s.socks_tcp||0) +' UDP '+(s.socks_udp||0) + (s.socks_ifaces && s.socks_ifaces.length ? ' · '+s.socks_ifaces.join(', ') : '')) : 'выкл'],
+    ['CSQTT', s.csqtt_ok ? ('вкл '+ (s.csqtt_active||0) + (s.csqtt_iface_up ? ' · csqtt1' : '')) : (s.csqtt_error ? 'нет связи' : 'не подключён')],
     ['Логи', s.logs_active ? 'вкл' : 'выкл'],
   ].map(([k,v])=>`<div class="card"><span>${k}</span><strong>${v}</strong></div>`).join('');
   const d = await api('/api/clients');
@@ -191,6 +228,16 @@ async function refresh(){
     <td>${c.owner?'':`<button class="bad" type="button" onclick="del(${i})">×</button>`}</td>
   </tr>`;
   }).join('');
+}
+function showTab(kind){
+  clientKind = kind === 'csqtt' ? 'csqtt' : 'qwdtt';
+  document.getElementById('pane-qwdtt').hidden = clientKind !== 'qwdtt';
+  document.getElementById('pane-csqtt').hidden = clientKind !== 'csqtt';
+  const q = document.getElementById('tab-qwdtt');
+  const c = document.getElementById('tab-csqtt');
+  q.className = clientKind === 'qwdtt' ? '' : 'ghost';
+  c.className = clientKind === 'csqtt' ? '' : 'ghost';
+  if (clientKind === 'csqtt') loadCsqtt();
 }
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function copyField(i, key, btn){
@@ -233,11 +280,18 @@ function openCreate(){
   const err = document.getElementById('cerr');
   form.reset();
   form.days.value = '30';
+  if (form.dtls_port) form.dtls_port.value = '46000';
   err.textContent = '';
   err.className = 'off';
   form.hidden = false;
   document.getElementById('created').hidden = true;
-  document.getElementById('modal-title').textContent = 'Новый клиент';
+  document.getElementById('modal-title').textContent = clientKind === 'csqtt' ? 'Новый клиент CSQTT' : 'Новый клиент qWDTT';
+  const csq = clientKind === 'csqtt';
+  document.getElementById('peer-field').hidden = !csq;
+  document.getElementById('hash-qwdtt').hidden = csq;
+  document.getElementById('hash-csqtt').hidden = !csq;
+  const req = document.querySelector('#hash-qwdtt input[name="vk_hash1"]');
+  if (req) req.required = !csq;
   modal.hidden = false;
   document.body.classList.add('modal-open');
   const first = form.querySelector('input[name="label"]');
@@ -256,24 +310,31 @@ async function create(e){
   err.textContent = '';
   try {
     const f = new FormData(e.target);
-    const hashes = [1,2,3,4].map(n => (f.get('vk_hash'+n)||'').trim()).filter(Boolean);
+    let hashes = [];
+    let path = '/api/clients';
+    if (clientKind === 'csqtt') {
+      hashes = [1,2,3,4,5,6].map(n => (f.get('c_vk_hash'+n)||'').trim()).filter(Boolean);
+      path = '/api/csqtt/clients';
+    } else {
+      hashes = [1,2,3,4].map(n => (f.get('vk_hash'+n)||'').trim()).filter(Boolean);
+    }
     if (!hashes.length) throw new Error('укажите VK hash');
-    if (hashes.length > 4) throw new Error('максимум 4 VK hash');
     const body = new URLSearchParams(f);
     body.set('vk_hash', hashes.join(','));
-    const created = await api('/api/clients', {
+    const created = await api(path, {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body
     });
     createdPass = created.password || '';
-    createdLink = created.qwdtt_link || '';
+    createdLink = created.csqtt_link || created.qwdtt_link || '';
     document.getElementById('created-pass').textContent = createdPass;
     document.getElementById('created-link').textContent = createdLink;
     e.target.hidden = true;
     document.getElementById('created').hidden = false;
     document.getElementById('modal-title').textContent = 'Клиент создан';
     await refresh();
+    if (clientKind === 'csqtt') await loadCsqtt();
   } catch (ex) {
     err.className = 'off';
     err.style.color = 'var(--bad)';
@@ -295,6 +356,89 @@ async function del(i){
   } catch (ex) {
     alert(ex.message || ex);
   }
+}
+async function delCsqtt(i){
+  const p = csqttRows[i] && csqttRows[i].password;
+  if (!p || csqttRows[i].owner || !confirm('Удалить клиента CSQTT?')) return;
+  try {
+    await api('/api/csqtt/clients/delete', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({password: p})
+    });
+    await loadCsqtt();
+  } catch (ex) {
+    alert(ex.message || ex);
+  }
+}
+async function saveCsqtt(e){
+  e.preventDefault();
+  const st = document.getElementById('csqtt-status');
+  st.textContent = 'подключаю…';
+  st.style.color = '';
+  try {
+    const body = new URLSearchParams(new FormData(e.target));
+    const d = await api('/api/csqtt', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    });
+    st.className = 'on';
+    st.textContent = 'CSQTT подключён' + (d.iface_up ? ' · csqtt1 есть' : ' · интерфейс csqtt1 пока не поднят');
+    await loadCsqttClients();
+  } catch (ex) {
+    st.className = 'off';
+    st.style.color = 'var(--bad)';
+    st.textContent = ex.message || ex;
+  }
+  return false;
+}
+async function loadCsqtt(){
+  const st = document.getElementById('csqtt-status');
+  const f = document.getElementById('csqtt-form');
+  try {
+    const d = await api('/api/csqtt');
+    if (f && !f.contains(document.activeElement)) {
+      if (d.url) f.url.value = d.url;
+      if (d.user) f.user.value = d.user;
+      if (d.has_password && !f.password.value) f.password.placeholder = 'сохранён';
+    }
+    if (d.connected) {
+      st.className = 'on';
+      st.style.color = '';
+      st.textContent = 'CSQTT подключён' + (d.iface_up ? ' · csqtt1 есть' : '');
+      await loadCsqttClients();
+    } else {
+      st.className = 'off';
+      st.style.color = d.error ? 'var(--bad)' : '';
+      st.textContent = d.error || 'не подключён';
+      document.getElementById('csqtt-clients').innerHTML = '';
+    }
+  } catch (ex) {
+    st.className = 'off';
+    st.style.color = 'var(--bad)';
+    st.textContent = ex.message || ex;
+  }
+}
+async function loadCsqttClients(){
+  const d = await api('/api/csqtt/clients');
+  csqttRows = d.clients || [];
+  document.getElementById('csqtt-clients').innerHTML = csqttRows.map((c,i) => {
+    const n = String(c.hashes||'').split(',').filter(Boolean).length;
+    const hashLine = c.owner ? '' : (n ? `<div class="off">${n===1?'1 хэш':n+' хэша'}</div>` : '');
+    return `<tr>
+    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'')}</div>${hashLine}</td>
+    <td><code>${esc(c.password)}</code> <button class="ghost" type="button" onclick="copyCsqtt(${i},'password',this)">копировать</button></td>
+    <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
+    <td>${c.sessions||0}</td>
+    <td class="link">${esc(c.csqtt_link||'')}<div><button class="ghost" type="button" onclick="copyCsqtt(${i},'csqtt_link',this)">копировать ссылку</button></div></td>
+    <td>${c.owner?'':`<button class="bad" type="button" onclick="delCsqtt(${i})">×</button>`}</td>
+  </tr>`;
+  }).join('');
+}
+function copyCsqtt(i, key, btn){
+  const s = (csqttRows[i] && csqttRows[i][key]) || '';
+  copyText(s).then(ok => flashBtn(btn, ok));
 }
 async function logs(){
   const d = await api('/api/logs');
@@ -325,7 +469,7 @@ async function loadSocks(){
     err.style.color = '';
     if (d.on && d.listening) {
       err.className = 'on';
-      err.textContent = 'SOCKS включён — TCP '+(d.tcp||0)+', UDP '+(d.udp||0);
+      err.textContent = 'SOCKS включён — TCP '+(d.tcp||0)+', UDP '+(d.udp||0)+(d.ifaces && d.ifaces.length ? ' · '+d.ifaces.join(', ') : '');
     } else if (d.health && d.health !== 'ok' && d.health !== 'выкл' && d.health !== '') {
       err.className = 'off';
       err.style.color = 'var(--bad)';
@@ -424,6 +568,7 @@ async function reboot(){
 refresh();
 loadSocks();
 logs();
+loadCsqtt();
 setInterval(refresh, 8000);
 setInterval(logs, 8000);
 </script>

@@ -17,3 +17,7 @@ func socksDeactivate() {}
 func socksRestore() {}
 
 func socksRefreshIfaces() {}
+
+func socksClearCsqttTproxy() {}
+
+func socksIfaceNames() []string { return nil }
