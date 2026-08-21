@@ -53,10 +53,17 @@ type csqttClientInfo struct {
 var (
 	csqttBr = &csqttBridge{
 		hc: &http.Client{
-			Timeout: 4 * time.Second,
+			Timeout: 8 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 			Transport: &http.Transport{
-				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
-				TLSHandshakeTimeout: 2 * time.Second,
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+					NextProtos:         []string{"http/1.1"},
+				},
+				TLSHandshakeTimeout: 3 * time.Second,
+				ForceAttemptHTTP2:   false,
 			},
 		},
 	}
@@ -87,32 +94,49 @@ func (b *csqttBridge) loginLocked() error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
 	resp, err := b.hc.Do(req)
 	if err != nil {
-		return fmt.Errorf("CSQTT недоступен: %w", err)
+		return fmt.Errorf("CSQTT недоступен на %s: %w", b.base, err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode == http.StatusMovedPermanently || resp.StatusCode == http.StatusFound {
+		return fmt.Errorf("CSQTT редирект с %s (HTTP %d)", b.base, resp.StatusCode)
+	}
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return errors.New("CSQTT: слишком много попыток входа, подождите")
+		return errors.New("CSQTT: слишком много попыток входа, подождите 3 минуты")
 	}
 	if resp.StatusCode != http.StatusOK {
 		msg := strings.TrimSpace(string(raw))
 		if msg == "" {
-			msg = "неверный логин или пароль CSQTT"
+			msg = fmt.Sprintf("вход CSQTT HTTP %d", resp.StatusCode)
 		}
 		return errors.New(msg)
 	}
-	b.cookie = ""
-	for _, c := range resp.Cookies() {
-		if c.Name == "csqtt_session" && c.Value != "" {
-			b.cookie = c.Value
-		}
-	}
+	b.cookie = csqttSessionCookie(resp)
 	if b.cookie == "" {
 		return errors.New("CSQTT не вернул сессию")
 	}
+	log.Printf("[CSQTT] панель %s, логин %s", b.base, b.user)
 	return nil
+}
+
+func csqttSessionCookie(resp *http.Response) string {
+	for _, c := range resp.Cookies() {
+		if c.Name == "csqtt_session" && c.Value != "" {
+			return c.Value
+		}
+	}
+	for _, raw := range resp.Header.Values("Set-Cookie") {
+		for _, part := range strings.Split(raw, ";") {
+			part = strings.TrimSpace(part)
+			if strings.HasPrefix(part, "csqtt_session=") {
+				return strings.TrimPrefix(part, "csqtt_session=")
+			}
+		}
+	}
+	return ""
 }
 
 func (b *csqttBridge) applyLocalCredsLocked() error {

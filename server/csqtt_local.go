@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,6 +29,7 @@ func csqttLocalCreds() (base, user, pass string) {
 	}
 	user = "admin"
 	port := uint16(46002)
+	applyCsqttUnitFile("/etc/systemd/system/csqtt.service", &port)
 	applyCsqttEnvFile("/etc/csqtt/csqtt.env", &user, &pass, &port)
 	applyCsqttProcess(&user, &pass, &port)
 	if pass == "" && csqttMainPID() > 0 {
@@ -49,6 +51,9 @@ func csqttInvalidateCreds() {
 func applyCsqttEnvFile(path string, user, pass *string, port *uint16) {
 	b, err := os.ReadFile(path)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("[CSQTT] не прочитан %s: %v", path, err)
+		}
 		return
 	}
 	for _, line := range strings.Split(string(b), "\n") {
@@ -57,6 +62,36 @@ func applyCsqttEnvFile(path string, user, pass *string, port *uint16) {
 			continue
 		}
 		applyCsqttEnvKV(k, v, user, pass, port)
+	}
+}
+
+func applyCsqttUnitFile(path string, port *uint16) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ExecStart=") {
+			continue
+		}
+		fields := strings.Fields(line)
+		for i, f := range fields {
+			next := ""
+			if i+1 < len(fields) {
+				next = fields[i+1]
+			}
+			switch {
+			case f == "--web-port" && next != "":
+				if n, err := strconv.Atoi(next); err == nil && n > 0 && n <= 65535 {
+					*port = uint16(n)
+				}
+			case strings.HasPrefix(f, "--web-port="):
+				if n, err := strconv.Atoi(strings.TrimPrefix(f, "--web-port=")); err == nil && n > 0 && n <= 65535 {
+					*port = uint16(n)
+				}
+			}
+		}
 	}
 }
 
@@ -154,9 +189,17 @@ func csqttMainPID() int {
 			return n
 		}
 	}
-	if out, err := runCmd("systemctl", "show", "-p", "MainPID", "--value", "csqtt"); err == nil {
-		if n, err := strconv.Atoi(strings.TrimSpace(out)); err == nil && n > 1 {
-			return n
+	if out, err := runCmd("systemctl", "show", "-p", "MainPID", "csqtt"); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "MainPID=") {
+				if n, err := strconv.Atoi(strings.TrimPrefix(line, "MainPID=")); err == nil && n > 1 {
+					return n
+				}
+			}
+			if n, err := strconv.Atoi(line); err == nil && n > 1 {
+				return n
+			}
 		}
 	}
 	ents, err := os.ReadDir("/proc")
