@@ -8,7 +8,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 set -euo pipefail
 
-readonly SCRIPT_VERSION="3.0"
+readonly SCRIPT_VERSION="3.1"
 readonly REPO_URL="${QWDTT_REPO:-https://github.com/MaxPain99/qwdtt-panel.git}"
 readonly REPO_BRANCH="${QWDTT_BRANCH:-master}"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
@@ -76,19 +76,23 @@ os_packages() {
         ubuntu|debian|linuxmint|pop)
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -y >>"$LOG_FILE" 2>&1 || true
-            apt-get install -y -qq ca-certificates curl git openssl iproute2 iptables procps build-essential pkg-config >>"$LOG_FILE" 2>&1 \
+            apt-get install -y -qq ca-certificates curl git openssl iproute2 iptables procps \
+                build-essential pkg-config cmake clang >>"$LOG_FILE" 2>&1 \
                 || die "apt: не удалось поставить пакеты"
             ;;
         fedora)
-            dnf install -y ca-certificates curl git openssl iproute iptables procps-ng gcc make pkgconf-pkg-config >>"$LOG_FILE" 2>&1 \
+            dnf install -y ca-certificates curl git openssl iproute iptables procps-ng \
+                gcc make pkgconf-pkg-config cmake clang >>"$LOG_FILE" 2>&1 \
                 || die "dnf: не удалось поставить пакеты"
             ;;
         centos|rhel|rocky|almalinux|oracle)
             if command -v dnf >/dev/null 2>&1; then
-                dnf install -y ca-certificates curl git openssl iproute iptables procps-ng gcc make pkgconf-pkg-config >>"$LOG_FILE" 2>&1 \
+                dnf install -y ca-certificates curl git openssl iproute iptables procps-ng \
+                    gcc make pkgconf-pkg-config cmake clang >>"$LOG_FILE" 2>&1 \
                     || die "dnf: не удалось поставить пакеты"
             else
-                yum install -y ca-certificates curl git openssl iproute iptables procps-ng gcc make pkgconfig >>"$LOG_FILE" 2>&1 \
+                yum install -y ca-certificates curl git openssl iproute iptables procps-ng \
+                    gcc make pkgconfig cmake clang >>"$LOG_FILE" 2>&1 \
                     || die "yum: не удалось поставить пакеты"
             fi
             ;;
@@ -243,16 +247,44 @@ fetch_csqtt_sources() {
     [ -d "${CSQTT_SRC_DIR}/csqtt-uring" ] || die "нет ${CSQTT_SRC_DIR}/csqtt-uring"
 }
 
+csqtt_host_gnu_target() {
+    case "$(uname -m)" in
+        x86_64|amd64) printf '%s' "x86_64-unknown-linux-gnu" ;;
+        aarch64|arm64) printf '%s' "aarch64-unknown-linux-gnu" ;;
+        *) die "архитектура $(uname -m) для сборки CSQTT не поддерживается" ;;
+    esac
+}
+
 build_csqtt_binary() {
     ensure_rust
     fetch_csqtt_sources
-    log_info "сборка CSQTT (cargo release)..."
+    # Upstream .cargo/config.toml по умолчанию тянет musl без zig/musl-gcc —
+    # на VPS собираем под системный glibc (gnu), этого достаточно для systemd.
+    local triple
+    triple="$(csqtt_host_gnu_target)"
+    log_info "сборка CSQTT (cargo release, target=${triple})..."
     (
         cd "${CSQTT_SRC_DIR}/csqtt-uring"
-        cargo build --release >>"$LOG_FILE" 2>&1
+        # Не даём config.toml подменить target на musl.
+        if [ -f .cargo/config.toml ]; then
+            mv -f .cargo/config.toml .cargo/config.toml.qwdtt-bak
+        fi
+        # shellcheck disable=SC1091
+        [ -f /root/.cargo/env ] && . /root/.cargo/env
+        export PATH="/root/.cargo/bin:${HOME}/.cargo/bin:${PATH}"
+        rustup target add "$triple" >>"$LOG_FILE" 2>&1 || true
+        set +e
+        cargo build --release --target "$triple" >>"$LOG_FILE" 2>&1
+        status=$?
+        set -e
+        if [ -f .cargo/config.toml.qwdtt-bak ]; then
+            mv -f .cargo/config.toml.qwdtt-bak .cargo/config.toml
+        fi
+        exit "$status"
     ) || die "сборка CSQTT не удалась, см. $LOG_FILE (или задайте CSQTT_BIN_URL / положите /tmp/csqtt)"
     local built=""
     for p in \
+        "${CSQTT_SRC_DIR}/csqtt-uring/target/${triple}/release/csqtt" \
         "${CSQTT_SRC_DIR}/csqtt-uring/target/release/csqtt" \
         "${CSQTT_SRC_DIR}/target/release/csqtt"
     do
@@ -260,7 +292,7 @@ build_csqtt_binary() {
     done
     [ -n "$built" ] || die "после сборки нет бинарника csqtt"
     install -m 0755 "$built" "$CSQTT_BIN"
-    log_info "установлен $CSQTT_BIN"
+    log_info "установлен $CSQTT_BIN (${triple})"
 }
 
 obtain_csqtt_binary() {
