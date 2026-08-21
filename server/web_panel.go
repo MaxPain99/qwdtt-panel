@@ -329,6 +329,42 @@ func panelClientLink(pass, hash string) (wdtt string, qwdtt string) {
 	return
 }
 
+func parsePanelVkHashes(r *http.Request) (string, error) {
+	raw := make([]string, 0, 5)
+	if v := strings.TrimSpace(r.FormValue("vk_hash")); v != "" {
+		raw = append(raw, v)
+	}
+	for i := 1; i <= 4; i++ {
+		if v := strings.TrimSpace(r.FormValue("vk_hash" + strconv.Itoa(i))); v != "" {
+			raw = append(raw, v)
+		}
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 4)
+	for _, chunk := range raw {
+		for _, p := range strings.FieldsFunc(chunk, func(ru rune) bool {
+			return ru == ',' || ru == ';' || ru == '\n' || ru == '\r' || ru == '\t' || ru == ' '
+		}) {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if _, ok := seen[p]; ok {
+				continue
+			}
+			if len(out) >= 4 {
+				return "", fmt.Errorf("максимум 4 VK hash")
+			}
+			seen[p] = struct{}{}
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return "", fmt.Errorf("укажите VK hash")
+	}
+	return strings.Join(out, ","), nil
+}
+
 func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 	if !requirePanelAuth(w, r) {
 		return
@@ -344,6 +380,7 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 			ActiveDevices int    `json:"active_devices"`
 			Expires       string `json:"expires"`
 			Deactivated   bool   `json:"deactivated"`
+			Hashes        string `json:"hashes"`
 			QWDTTLink     string `json:"qwdtt_link"`
 			WDTTLink      string `json:"wdtt_link"`
 		}
@@ -388,6 +425,7 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 					ActiveDevices: active,
 					Expires:       exp,
 					Deactivated:   e.IsDeactivated,
+					Hashes:        e.VkHash,
 					QWDTTLink:     qwdtt,
 					WDTTLink:      wdtt,
 				})
@@ -405,9 +443,9 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusBadRequest, "form")
 		return
 	}
-	vkHash := strings.TrimSpace(r.FormValue("vk_hash"))
-	if vkHash == "" {
-		writePanelError(w, http.StatusBadRequest, "укажите VK hash")
+	vkHash, err := parsePanelVkHashes(r)
+	if err != nil {
+		writePanelError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	days := 30

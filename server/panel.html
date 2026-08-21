@@ -11,6 +11,9 @@ body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var
 header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line)}
 header b{color:var(--acc)}
 a{color:var(--acc)}
+header .row a, header .row button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border-radius:8px;text-decoration:none;font:inherit;cursor:pointer}
+header .row a{background:transparent;border:1px solid var(--line);color:var(--txt)}
+.hashes{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;width:100%}
 main{padding:20px;max-width:1100px;margin:0 auto}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
@@ -35,19 +38,26 @@ h2{font-size:1rem;margin:22px 0 10px}
 <header>
 <div>qWDTT <b>панель</b></div>
 <div class="row" style="margin:0">
-<button class="ghost" onclick="upd()">Обновить сервер</button>
-<button class="ghost" onclick="reboot()">Reboot</button>
-<a href="/logout">Выйти</a>
+<button class="ghost" type="button" onclick="upd()">Обновить сервер</button>
+<button class="ghost" type="button" onclick="reboot()">Reboot</button>
+<button class="ghost" type="button" onclick="location.href='/logout'">Выйти</button>
 </div>
 </header>
 <main>
 <div class="grid" id="stats"></div>
 <h2>Клиенты</h2>
-<form class="row" onsubmit="return create(event)">
+<form onsubmit="return create(event)">
+<div class="row">
 <input name="label" placeholder="Имя" required>
-<input name="vk_hash" placeholder="VK hash" required>
-<input name="days" type="number" min="1" max="365" value="30" style="width:90px">
+<input name="days" type="number" min="1" max="365" value="30" title="Срок, дни" style="width:90px">
 <button type="submit">Создать</button>
+</div>
+<div class="hashes">
+<input name="vk_hash1" placeholder="VK hash 1" required>
+<input name="vk_hash2" placeholder="VK hash 2 (необязательно)">
+<input name="vk_hash3" placeholder="VK hash 3 (необязательно)">
+<input name="vk_hash4" placeholder="VK hash 4 (необязательно)">
+</div>
 </form>
 <p id="cerr" class="off"></p>
 <div class="card" style="overflow:auto">
@@ -88,18 +98,51 @@ async function refresh(){
     ['NAT', s.nat],
   ].map(([k,v])=>`<div class="card"><span>${k}</span><strong>${v}</strong></div>`).join('');
   const d = await api('/api/clients');
-  document.getElementById('clients').innerHTML = (d.clients||[]).map(c => `<tr>
-    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'')}</div></td>
-    <td><code>${esc(c.password)}</code> <button class="ghost" onclick="copyText('${esc(c.password)}')">копировать</button></td>
+  clientRows = d.clients || [];
+  document.getElementById('clients').innerHTML = clientRows.map((c,i) => {
+    const n = String(c.hashes||'').split(',').filter(Boolean).length;
+    const hashLine = c.owner ? '' : (n ? `<div class="off">${n===1?'1 хэш':n+' хэша'}</div>` : '');
+    return `<tr>
+    <td>${esc(c.label)}${c.owner?' <small class="on">owner</small>':''}<div class="off">${c.deactivated?'выкл':(c.expires||'')}</div>${hashLine}</td>
+    <td><code>${esc(c.password)}</code> <button class="ghost" type="button" onclick="copyField(${i},'password',this)">копировать</button></td>
     <td>↑ ${fmt(c.up)} ↓ ${fmt(c.down)}</td>
     <td>${c.active_devices||0}/${c.max_devices||1}</td>
-    <td class="link">${esc(c.qwdtt_link||'')}<div><button class="ghost" onclick="copyText(${JSON.stringify(c.qwdtt_link||'')})">копировать ссылку</button></div></td>
-    <td>${c.owner?'':`<button class="bad" onclick="del('${esc(c.password)}')">×</button>`}</td>
-  </tr>`).join('');
+    <td class="link">${esc(c.qwdtt_link||'')}<div><button class="ghost" type="button" onclick="copyField(${i},'qwdtt_link',this)">копировать ссылку</button></div></td>
+    <td>${c.owner?'':`<button class="bad" type="button" onclick="del(${i})">×</button>`}</td>
+  </tr>`;
+  }).join('');
 }
+let clientRows = [];
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function copyText(s){
-  navigator.clipboard.writeText(s).then(()=>{},()=>prompt('Скопируйте', s));
+function copyField(i, key, btn){
+  const s = (clientRows[i] && clientRows[i][key]) || '';
+  copyText(s).then(ok => {
+    if (!btn) return;
+    const prev = btn.textContent;
+    btn.textContent = ok ? 'скопировано' : 'ошибка';
+    setTimeout(()=>{ btn.textContent = prev; }, 1200);
+  });
+}
+async function copyText(s){
+  s = String(s||'');
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(s);
+      return true;
+    }
+  } catch (e) {}
+  const ta = document.createElement('textarea');
+  ta.value = s;
+  ta.setAttribute('readonly','');
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  if (!ok) prompt('Скопируйте ссылку', s);
+  return ok;
 }
 async function create(e){
   e.preventDefault();
@@ -107,7 +150,11 @@ async function create(e){
   err.textContent = '';
   try {
     const f = new FormData(e.target);
+    const hashes = [1,2,3,4].map(n => (f.get('vk_hash'+n)||'').trim()).filter(Boolean);
+    if (!hashes.length) throw new Error('укажите VK hash');
+    if (hashes.length > 4) throw new Error('максимум 4 VK hash');
     const body = new URLSearchParams(f);
+    body.set('vk_hash', hashes.join(','));
     const created = await api('/api/clients', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -126,8 +173,9 @@ async function create(e){
   }
   return false;
 }
-async function del(p){
-  if (!confirm('Удалить клиента?')) return;
+async function del(i){
+  const p = clientRows[i] && clientRows[i].password;
+  if (!p || !confirm('Удалить клиента?')) return;
   try {
     const body = new URLSearchParams({password: p});
     await api('/api/clients/delete', {
