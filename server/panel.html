@@ -81,29 +81,32 @@ header{
 .top-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 
 .nav-rail{
-  display:flex;gap:6px;flex-wrap:wrap;
-  padding:6px;
-  margin:18px auto 0;
-  max-width:1120px;width:calc(100% - 40px);
-  background:var(--glass);
-  border:1px solid var(--glass-border);
+  display:inline-flex;gap:0;flex-wrap:nowrap;align-items:center;
+  padding:5px;
+  margin:20px auto 0;
+  max-width:calc(100% - 40px);
+  width:fit-content;
+  background:#fff;
+  border:1px solid rgba(15,23,42,.06);
   border-radius:999px;
-  backdrop-filter:blur(14px);
-  -webkit-backdrop-filter:blur(14px);
-  box-shadow:var(--shadow);
+  box-shadow:0 8px 28px rgba(15,23,42,.12);
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
 }
 .tab-btn{
-  border:0;background:transparent;color:var(--muted);
-  padding:10px 18px;border-radius:999px;
-  font:inherit;font-weight:600;cursor:pointer;
-  transition:background .18s,color .18s,transform .18s,box-shadow .18s;
+  border:0;background:transparent;color:#64748b;
+  padding:11px 22px;border-radius:999px;
+  font:inherit;font-size:15px;font-weight:600;cursor:pointer;
+  white-space:nowrap;
+  transition:background .18s,color .18s,box-shadow .18s;
 }
-.tab-btn:hover{color:var(--text);background:var(--surface-hover)}
+.tab-btn:hover{color:#0f172a;background:rgba(15,23,42,.04)}
 .tab-btn.active{
-  color:#042f2e;
-  background:linear-gradient(135deg,var(--primary),#5eead4 55%,var(--primary-2));
-  box-shadow:0 6px 20px rgba(45,212,191,.28);
+  color:#fff;
+  background:#0077ff;
+  box-shadow:0 4px 14px rgba(0,119,255,.35);
 }
+.tab-btn.active:hover{color:#fff;background:#0066dd}
 
 .subtabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
 .subtab{
@@ -301,7 +304,11 @@ code{
 @media (max-width:640px){
   header{padding:12px 14px}
   .shell{padding:0 14px}
-  .nav-rail{width:calc(100% - 28px);border-radius:18px;justify-content:center}
+  .nav-rail{
+    width:calc(100% - 28px);max-width:none;justify-content:flex-start;
+    border-radius:18px;padding:4px;
+  }
+  .tab-btn{padding:10px 14px;font-size:14px;flex:1;text-align:center}
   th:nth-child(3),td:nth-child(3){display:none}
   .brand{font-size:1.2rem}
 }
