@@ -463,15 +463,25 @@ code{
     </div>
 
     <div class="glass settings-block">
-      <h3 class="settings-pane-title">Обновление с GitHub</h3>
-      <p class="hint">Можно обновить модули по отдельности или оба сразу. Unit-файлы не переписываются. Лог: <code>/var/log/qwdtt-panel-update.log</code></p>
-      <div class="row" style="margin-bottom:10px">
-        <button class="btn" type="button" onclick="upd('qwdtt')">Обновить qWDTT</button>
-        <button class="btn btn-ghost" type="button" onclick="upd('csqtt')">Обновить CSQTT</button>
-        <button class="btn" type="button" onclick="upd('all')">Обновить оба</button>
+      <h3 class="settings-pane-title">Обновление серверной части</h3>
+      <p class="hint">Два режима: <b>как из приложения</b> (официальный деплой) и <b>из исходников GitHub</b> (сборка). Панель <code>qwdtt-panel</code> при app-обновлении qWDTT не затирается. Лог: <code>/var/log/qwdtt-panel-update.log</code></p>
+
+      <h4 style="margin:14px 0 8px;font-size:.95rem;color:var(--text)">Как из приложения</h4>
+      <p class="hint" style="margin-bottom:8px">qWDTT — stock SpaceNeuroX <code>wdtt-server</code> (как вкладка «Серверы» в APK). CSQTT — официальный <code>deploy.sh</code>.</p>
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn btn-blue" type="button" onclick="upd('qwdtt','app')">qWDTT</button>
+        <button class="btn btn-ghost" type="button" onclick="upd('csqtt','app')">CSQTT</button>
+        <button class="btn btn-blue" type="button" onclick="upd('all','app')">Оба</button>
       </div>
-      <p class="hint" style="margin-bottom:8px"><b>qWDTT</b> — wdtt-server + qwdtt-panel из MaxPain99/qwdtt-panel.<br>
-      <b>CSQTT</b> — бинарник из amurcanov/csqtt (cargo) или <code>CSQTT_BIN_URL</code> / <code>/tmp/csqtt</code>.</p>
+
+      <h4 style="margin:14px 0 8px;font-size:.95rem;color:var(--text)">Из исходников GitHub</h4>
+      <p class="hint" style="margin-bottom:8px">qWDTT — сборка MaxPain99/qwdtt-panel (сервер + панель). CSQTT — cargo из amurcanov/csqtt.</p>
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn" type="button" onclick="upd('qwdtt','source')">qWDTT + панель</button>
+        <button class="btn btn-ghost" type="button" onclick="upd('csqtt','source')">CSQTT</button>
+        <button class="btn" type="button" onclick="upd('all','source')">Оба</button>
+      </div>
+
       <div class="row">
         <button class="btn btn-ghost" type="button" onclick="reboot()">Перезагрузить VPS</button>
       </div>
@@ -929,20 +939,32 @@ async function socksOff(){
     await refresh();
   } catch (ex) { showSocksMsg('Не выключен: ' + (ex.message || ex), false); }
 }
-async function upd(target){
+async function upd(target, mode){
   target = target || 'all';
-  const labels = {qwdtt:'qWDTT (сервер+панель)', csqtt:'CSQTT', all:'оба модуля (qWDTT + CSQTT)'};
-  const label = labels[target] || labels.all;
-  if (!confirm('Обновить с GitHub: '+label+'?\nUnit-файлы не меняются. Сборка CSQTT может занять несколько минут.')) return;
+  mode = mode || 'source';
+  const modeLabel = mode === 'app' ? 'как из приложения' : 'из исходников GitHub';
+  const labels = {qwdtt:'qWDTT', csqtt:'CSQTT', all:'оба модуля'};
+  const label = (labels[target] || labels.all) + ' · ' + modeLabel;
+  let warn = 'Запустить обновление: '+label+'?';
+  if (mode === 'app' && (target === 'qwdtt' || target === 'all')) {
+    warn += '\n\nStock SpaceNeuroX wdtt-server. Панель сохранится, unit с admin API восстановится.';
+  }
+  if (mode === 'app' && (target === 'csqtt' || target === 'all')) {
+    warn += '\n\nОфициальный CSQTT deploy.sh (как с Android).';
+  }
+  if (mode === 'source') {
+    warn += '\n\nСборка может занять несколько минут.';
+  }
+  if (!confirm(warn)) return;
   const st = document.getElementById('upd-status');
   if (st) { st.className = 'status-line on'; st.textContent = 'Запущено: '+label+'…'; }
   try {
     await api('/api/update-server', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({target})
+      body: new URLSearchParams({target, mode})
     });
-    if (st) st.textContent = 'Обновление запущено ('+label+'). Через 1–5 мин обновите страницу. Лог: /var/log/qwdtt-panel-update.log';
+    if (st) st.textContent = 'Обновление запущено ('+label+'). Смотрите /var/log/qwdtt-panel-update.log';
     alert('Обновление запущено ('+label+'). Через несколько минут обновите страницу.');
   } catch (ex) {
     if (st) { st.className = 'status-line bad'; st.textContent = ex.message || ex; }

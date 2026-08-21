@@ -17,7 +17,10 @@ qWDTT — Android-приложение для подключения к собс
 
 **SOCKS5 UDP** остаётся: один TPROXY на `wdtt0` / `wdttraw0` / `csqtt1` → локальный Xray/sing-box (TCP+UDP, проверка UDP ASSOCIATE как в CSQTT). Включается в **Настройки → qWDTT**. При активации гасится встроенный SOCKS CSQTT.
 
-Панель UI: вкладки Мониторинг / Клиенты / Логи / Настройки. В **Настройки** — общий SOCKS5 UDP и обновление с GitHub: qWDTT, CSQTT или оба модуля.
+Панель UI: вкладки Мониторинг / Клиенты / Логи / Настройки. В **Настройки** — общий SOCKS5 UDP и обновление серверов:
+
+- **как из приложения** — stock SpaceNeuroX `wdtt-server` / официальный CSQTT `deploy.sh`;
+- **из исходников GitHub** — сборка MaxPain99/qwdtt-panel и cargo CSQTT.
 
 Если вкладка CSQTT «не найден»: `csqtt` запущен, есть `CSQTT_WEB_PASS` в `/etc/csqtt/csqtt.env`, процесс `qwdtt-panel` читает `/etc/csqtt` (при `ProtectSystem=strict` — `ReadOnlyPaths=/etc/csqtt` в `qwdtt-panel.service`).
 

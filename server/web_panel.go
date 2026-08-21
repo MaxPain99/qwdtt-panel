@@ -949,14 +949,20 @@ func handlePanelUpdate(w http.ResponseWriter, r *http.Request) {
 	default:
 		target = "all"
 	}
+	mode := strings.ToLower(strings.TrimSpace(r.FormValue("mode")))
+	switch mode {
+	case "app", "source":
+	default:
+		mode = "source"
+	}
 	helper := "/usr/local/lib/qwdtt/update-server.sh"
 	if err := os.MkdirAll(filepath.Dir(helper), 0755); err == nil && updateServerScript != "" {
 		_ = os.WriteFile(helper, []byte(updateServerScript), 0755)
 	}
-	cmd := exec.Command("systemd-run", "--collect", "--no-block", helper, target)
+	cmd := exec.Command("systemd-run", "--collect", "--no-block", helper, target, mode)
 	if err := cmd.Start(); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
-	writePanelJSON(w, map[string]interface{}{"ok": true, "target": target})
+	writePanelJSON(w, map[string]interface{}{"ok": true, "target": target, "mode": mode})
 }

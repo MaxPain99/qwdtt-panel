@@ -1,24 +1,38 @@
 #!/usr/bin/env bash
-# Обновление с GitHub: qwdtt | csqtt | all
-# Unit-файлы не переписывает.
+# Обновление с панели:
+#   $1 target = qwdtt | csqtt | all
+#   $2 mode   = source | app
+# source — сборка из исходников GitHub
+# app    — как деплой из Android (stock qWDTT / официальный CSQTT deploy.sh)
+# Unit панели qwdtt-panel не удаляется; для qWDTT app восстанавливаем packaging/wdtt.service (admin API).
 set -euo pipefail
 
 readonly TARGET="${1:-all}"
+readonly MODE="${2:-source}"
 readonly LOG_FILE="/var/log/qwdtt-panel-update.log"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
 readonly BIN_PATH="${QWDTT_BIN:-/usr/local/bin/wdtt-server}"
 readonly PANEL_BIN_PATH="${QWDTT_PANEL_BIN:-/usr/local/bin/qwdtt-panel}"
 readonly REPO_URL="${QWDTT_REPO:-https://github.com/MaxPain99/qwdtt-panel.git}"
 readonly REPO_BRANCH="${QWDTT_BRANCH:-master}"
+readonly STOCK_REPO_URL="${WDTT_STOCK_REPO:-https://github.com/SpaceNeuroX/proxy-turn-vk-android.git}"
+readonly STOCK_DIR="${WDTT_STOCK_DIR:-/opt/wdtt-upstream}"
 readonly HELPER="/usr/local/lib/qwdtt/update-server.sh"
+readonly UNIT_PATH="/etc/systemd/system/wdtt.service"
+readonly PANEL_UNIT_PATH="/etc/systemd/system/qwdtt-panel.service"
 
 readonly CSQTT_REPO_URL="${CSQTT_REPO:-https://github.com/amurcanov/csqtt.git}"
 readonly CSQTT_SRC_DIR="${CSQTT_SRC_DIR:-/opt/csqtt-src}"
 readonly CSQTT_BIN="${CSQTT_BIN_PATH:-/usr/local/bin/csqtt}"
+readonly CSQTT_DEPLOY_URL="${CSQTT_DEPLOY_URL:-https://raw.githubusercontent.com/amurcanov/csqtt/main/app/src/main/assets/deploy.sh}"
+readonly CSQTT_PEER_PORT="${CSQTT_PEER_PORT:-46000}"
+readonly CSQTT_WEB_PORT="${CSQTT_WEB_PORT:-46002}"
+readonly CSQTT_SSH_PORT="${CSQTT_SSH_PORT:-22}"
+readonly CSQTT_ENV_FILE="${CSQTT_ENV_FILE:-/etc/csqtt/csqtt.env}"
 
 mkdir -p "$(dirname "$LOG_FILE")" /usr/local/lib/qwdtt
 exec >>"$LOG_FILE" 2>&1
-echo "=== panel update target=${TARGET} $(date -Iseconds) pid=$$ ==="
+echo "=== panel update target=${TARGET} mode=${MODE} $(date -Iseconds) pid=$$ ==="
 
 sleep 2
 export PATH="/usr/local/go/bin:/root/.cargo/bin:${HOME}/.cargo/bin:${PATH}"
@@ -35,8 +49,7 @@ refresh_helper() {
   fi
 }
 
-update_qwdtt() {
-  command -v go >/dev/null 2>&1 || { echo "go не найден"; exit 1; }
+ensure_panel_repo() {
   if [ -d "${SRC_DIR}/.git" ]; then
     git -C "$SRC_DIR" remote set-url origin "$REPO_URL" || true
     git -C "$SRC_DIR" fetch --depth 1 origin "$REPO_BRANCH"
@@ -46,6 +59,23 @@ update_qwdtt() {
     git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$SRC_DIR"
   fi
   [ -d "${SRC_DIR}/server" ] || { echo "нет ${SRC_DIR}/server"; exit 1; }
+}
+
+restore_units() {
+  if [ -f "${SRC_DIR}/packaging/wdtt.service" ]; then
+    install -m 0644 "${SRC_DIR}/packaging/wdtt.service" "$UNIT_PATH"
+  fi
+  if [ -f "${SRC_DIR}/packaging/panel.service" ]; then
+    install -m 0644 "${SRC_DIR}/packaging/panel.service" "$PANEL_UNIT_PATH"
+  fi
+  systemctl daemon-reload
+  systemctl enable wdtt qwdtt-panel >/dev/null 2>&1 || true
+}
+
+# --- qWDTT: исходники MaxPain99 (сервер + панель) ---
+update_qwdtt_source() {
+  command -v go >/dev/null 2>&1 || { echo "go не найден"; exit 1; }
+  ensure_panel_repo
   (
     cd "$SRC_DIR"
     go build -trimpath -ldflags '-s -w' -o /tmp/wdtt-server ./server
@@ -55,10 +85,40 @@ update_qwdtt() {
   install -m 0755 /tmp/qwdtt-panel "$PANEL_BIN_PATH"
   rm -f /tmp/wdtt-server /tmp/qwdtt-panel
   refresh_helper
-  echo "qWDTT: бинарники обновлены"
+  restore_units
+  echo "qWDTT source: wdtt-server + qwdtt-panel"
   systemctl restart wdtt
   sleep 1
   systemctl restart qwdtt-panel || true
+}
+
+# --- qWDTT: как из приложения (stock SpaceNeuroX server, панель не затираем) ---
+update_qwdtt_app() {
+  command -v go >/dev/null 2>&1 || { echo "go не найден"; exit 1; }
+  if [ -d "${STOCK_DIR}/.git" ]; then
+    git -C "$STOCK_DIR" remote set-url origin "$STOCK_REPO_URL" || true
+    git -C "$STOCK_DIR" fetch --depth 1 origin HEAD
+    git -C "$STOCK_DIR" checkout -q FETCH_HEAD
+  else
+    rm -rf "$STOCK_DIR"
+    git clone --depth 1 "$STOCK_REPO_URL" "$STOCK_DIR"
+  fi
+  [ -d "${STOCK_DIR}/server" ] || { echo "нет ${STOCK_DIR}/server"; exit 1; }
+  (
+    cd "$STOCK_DIR"
+    go build -trimpath -ldflags '-s -w' -o /tmp/wdtt-server ./server
+  )
+  install -m 0755 /tmp/wdtt-server "$BIN_PATH"
+  rm -f /tmp/wdtt-server
+  # Панель остаётся; unit с admin API — наш packaging
+  if [ ! -d "${SRC_DIR}/server" ]; then
+    ensure_panel_repo || true
+  fi
+  restore_units
+  echo "qWDTT app: stock SpaceNeuroX wdtt-server (панель сохранена)"
+  systemctl restart wdtt
+  sleep 1
+  systemctl try-restart qwdtt-panel || systemctl restart qwdtt-panel || true
 }
 
 csqtt_gnu_target() {
@@ -69,28 +129,10 @@ csqtt_gnu_target() {
   esac
 }
 
-update_csqtt() {
-  if [ -n "${CSQTT_BIN_URL:-}" ]; then
-    echo "CSQTT: скачиваю $CSQTT_BIN_URL"
-    curl -fL --retry 3 -o /tmp/csqtt-new "$CSQTT_BIN_URL"
-    install -m 0755 /tmp/csqtt-new "$CSQTT_BIN"
-    rm -f /tmp/csqtt-new
-    systemctl restart csqtt || true
-    echo "CSQTT: бинарник из URL"
-    return 0
-  fi
-
+build_csqtt_cargo() {
   if ! command -v cargo >/dev/null 2>&1; then
-    if [ -x /tmp/csqtt ]; then
-      install -m 0755 /tmp/csqtt "$CSQTT_BIN"
-      systemctl restart csqtt || true
-      echo "CSQTT: установлен из /tmp/csqtt (cargo нет)"
-      return 0
-    fi
-    echo "CSQTT: нужен cargo, CSQTT_BIN_URL или /tmp/csqtt"
-    exit 1
+    return 1
   fi
-
   if [ -d "${CSQTT_SRC_DIR}/.git" ]; then
     git -C "$CSQTT_SRC_DIR" remote set-url origin "$CSQTT_REPO_URL" || true
     git -C "$CSQTT_SRC_DIR" fetch --depth 1 origin HEAD
@@ -99,19 +141,16 @@ update_csqtt() {
     rm -rf "$CSQTT_SRC_DIR"
     git clone --depth 1 "$CSQTT_REPO_URL" "$CSQTT_SRC_DIR"
   fi
-  [ -d "${CSQTT_SRC_DIR}/csqtt-uring" ] || { echo "нет csqtt-uring"; exit 1; }
-
+  [ -d "${CSQTT_SRC_DIR}/csqtt-uring" ] || return 1
   local f="${CSQTT_SRC_DIR}/csqtt-uring/uring_io.rs"
   if [ -f "$f" ] && grep -q 'MSG_DONTWAIT as u32' "$f" 2>/dev/null; then
     sed -i 's/libc::MSG_DONTWAIT as u32/libc::MSG_DONTWAIT as _/g' "$f"
   fi
-
   local triple jobs=1 mem
-  triple="$(csqtt_gnu_target)" || { echo "архитектура не поддерживается"; exit 1; }
+  triple="$(csqtt_gnu_target)" || return 1
   mem="$(awk '/MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)"
   if [ "$mem" -ge 3000 ]; then jobs=2; fi
   if [ "$mem" -ge 6000 ]; then jobs=4; fi
-
   # shellcheck disable=SC1091
   [ -f /root/.cargo/env ] && . /root/.cargo/env
   (
@@ -130,7 +169,6 @@ update_csqtt() {
     fi
     exit "$status"
   )
-
   local built=""
   for p in \
     "${CSQTT_SRC_DIR}/csqtt-uring/target/${triple}/release/csqtt" \
@@ -138,11 +176,91 @@ update_csqtt() {
   do
     [ -x "$p" ] && built="$p" && break
   done
-  [ -n "$built" ] || { echo "нет бинарника csqtt после сборки"; exit 1; }
+  [ -n "$built" ] || return 1
   install -m 0755 "$built" "$CSQTT_BIN"
+  install -m 0755 "$built" /tmp/csqtt
   rm -rf "${CSQTT_SRC_DIR}/csqtt-uring/target" 2>/dev/null || true
+  return 0
+}
+
+stage_csqtt_binary() {
+  if [ -n "${CSQTT_BIN_URL:-}" ]; then
+    curl -fL --retry 3 -o /tmp/csqtt "$CSQTT_BIN_URL"
+    chmod 0755 /tmp/csqtt
+    return 0
+  fi
+  if build_csqtt_cargo; then
+    return 0
+  fi
+  if [ -x "$CSQTT_BIN" ]; then
+    install -m 0755 "$CSQTT_BIN" /tmp/csqtt
+    return 0
+  fi
+  echo "CSQTT: нет бинарника (cargo / CSQTT_BIN_URL / $CSQTT_BIN)"
+  return 1
+}
+
+# --- CSQTT: только бинарник (source) ---
+update_csqtt_source() {
+  if [ -n "${CSQTT_BIN_URL:-}" ]; then
+    curl -fL --retry 3 -o /tmp/csqtt-new "$CSQTT_BIN_URL"
+    install -m 0755 /tmp/csqtt-new "$CSQTT_BIN"
+    rm -f /tmp/csqtt-new
+  else
+    build_csqtt_cargo || { echo "CSQTT source: сборка не удалась"; exit 1; }
+  fi
   systemctl restart csqtt || true
-  echo "CSQTT: собран и перезапущен"
+  echo "CSQTT source: бинарник обновлён"
+}
+
+# --- CSQTT: как из приложения (официальный deploy.sh) ---
+update_csqtt_app() {
+  stage_csqtt_binary || exit 1
+  mkdir -p /etc/csqtt
+  if [ ! -s "$CSQTT_ENV_FILE" ]; then
+    local web_user=admin web_pass
+    web_pass="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16 || echo changeme)"
+    cat >"$CSQTT_ENV_FILE" <<EOF
+CSQTT_WEB_USER=${web_user}
+CSQTT_WEB_PASS=${web_pass}
+CSQTT_SECURE_COOKIE=false
+EOF
+    chmod 600 "$CSQTT_ENV_FILE"
+  fi
+  if [ ! -s /tmp/csqtt-deploy.json ]; then
+    local main_pass device_id
+    main_pass="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 18 || echo mainpass)"
+    device_id="$(cat /etc/machine-id 2>/dev/null | head -c 32 || echo paneldevice)"
+    printf '{"main_password":"%s","device_id":"%s","dns":"1.1.1.1,1.0.0.1"}\n' "$main_pass" "$device_id" > /tmp/csqtt-deploy.json
+    chmod 600 /tmp/csqtt-deploy.json
+  fi
+  curl -fL --retry 3 -o /tmp/csqtt-deploy.sh "$CSQTT_DEPLOY_URL"
+  chmod +x /tmp/csqtt-deploy.sh
+  # clamp conntrack on small VPS if deploy sets huge values
+  if grep -q 'nf_conntrack_max' /tmp/csqtt-deploy.sh 2>/dev/null; then
+    sed -i 's/1048576/262144/g' /tmp/csqtt-deploy.sh || true
+  fi
+  env CSQTT_PEER_PORT="$CSQTT_PEER_PORT" \
+      CSQTT_SSH_PORT="$CSQTT_SSH_PORT" \
+      CSQTT_WEB_PORT="$CSQTT_WEB_PORT" \
+      CSQTT_DEPLOY_MODE=systemd \
+      bash /tmp/csqtt-deploy.sh install
+  rm -f /tmp/csqtt-deploy.sh
+  systemctl is-active --quiet csqtt && echo "CSQTT app: deploy.sh OK" || echo "CSQTT app: проверьте journalctl -u csqtt"
+}
+
+update_qwdtt() {
+  case "$MODE" in
+    app) update_qwdtt_app ;;
+    *) update_qwdtt_source ;;
+  esac
+}
+
+update_csqtt() {
+  case "$MODE" in
+    app) update_csqtt_app ;;
+    *) update_csqtt_source ;;
+  esac
 }
 
 case "$TARGET" in
@@ -150,10 +268,10 @@ case "$TARGET" in
   csqtt) update_csqtt ;;
   all|both|"")
     update_qwdtt
-    update_csqtt || echo "CSQTT: обновление пропущено/ошибка (см. лог)"
+    update_csqtt || echo "CSQTT: ошибка/пропуск (см. лог)"
     ;;
   *)
-    echo "unknown target: $TARGET (qwdtt|csqtt|all)"
+    echo "unknown target: $TARGET"
     exit 1
     ;;
 esac
