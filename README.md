@@ -6,9 +6,11 @@ qWDTT — Android-приложение для подключения к собс
 
 ## Веб-панель (этот репозиторий)
 
-HTTPS-панель в том же процессе, что и `wdtt-server`. Официальный APK qWDTT не меняется. Клиентов CSQTT панель берёт с локального API `csqtt` (`127.0.0.1:46002`): список, создание, ссылки `csqtt://`, удаление. Вторую панель и отдельный логин вводить не нужно.
+HTTPS-панель в том же процессе, что и `wdtt-server`. Официальный APK qWDTT не меняется. Клиентов CSQTT панель берёт с локального API `csqtt` (`https://127.0.0.1:46002`): логин из `/etc/csqtt/csqtt.env` (`CSQTT_WEB_USER` / `CSQTT_WEB_PASS`), без отдельной формы подключения. Список, создание, ссылки `csqtt://`, удаление — через тот же API.
 
 SOCKS5 один на оба туннеля: TPROXY с `wdtt0`, `wdttraw0` и `csqtt1` в один локальный Xray/sing-box. При включении панель выключает SOCKS в CSQTT, чтобы не было двух маршрутов.
+
+Если вкладка CSQTT пишет «не найден» или «нет доступа к …/csqtt.env»: убедитесь, что `csqtt` запущен, в `/etc/csqtt/csqtt.env` есть `CSQTT_WEB_PASS`, и процесс `wdtt-server` может читать этот файл (в unit достаточно `ReadOnlyPaths=/etc/csqtt`; `ProtectHome=true` путь `/etc` не закрывает). `install.sh update` unit не переписывает — при необходимости добавьте `ReadOnlyPaths` вручную и `systemctl daemon-reload && systemctl restart wdtt`.
 
 Установка на VPS:
 

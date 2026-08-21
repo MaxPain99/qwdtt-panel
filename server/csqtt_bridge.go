@@ -140,12 +140,21 @@ func csqttSessionCookie(resp *http.Response) string {
 }
 
 func (b *csqttBridge) applyLocalCredsLocked() error {
-	base, user, pass := csqttLocalCreds()
-	if !csqttInstalled() && pass == "" {
-		return errors.New("CSQTT на этом VPS не найден")
-	}
+	base, user, pass, probe := csqttLocalCredsProbe()
+	// Password from env/process is enough — treat CSQTT as available even if
+	// binary path / passwords.json / PID heuristics fail.
 	if pass == "" {
-		return errors.New("нет пароля панели CSQTT в /etc/csqtt/csqtt.env — сервис должен быть запущен")
+		if !probe.present && !csqttPresent(probe.webPort) {
+			return errors.New("CSQTT на этом VPS не найден (нет unit/бинарника, /etc/csqtt и API на :46002)")
+		}
+		if probe.envDenied {
+			return fmt.Errorf("нет доступа к %s — добавьте в wdtt.service ReadOnlyPaths=%s или права на чтение для пользователя сервиса",
+				probe.envPath, "/etc/csqtt")
+		}
+		if probe.envErr != nil && !os.IsNotExist(probe.envErr) {
+			return fmt.Errorf("не удалось прочитать %s: %v", probe.envPath, probe.envErr)
+		}
+		return fmt.Errorf("нет пароля CSQTT_WEB_PASS в %s — укажите пароль панели CSQTT и перезапустите csqtt", probe.envPath)
 	}
 	if b.base != base || b.user != user || b.pass != pass {
 		b.base = base

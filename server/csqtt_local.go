@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,30 +15,83 @@ import (
 	"unicode"
 )
 
+const (
+	csqttDefaultWebPort uint16 = 46002
+	csqttEnvPath               = "/etc/csqtt/csqtt.env"
+)
+
 var (
 	csqttCredCacheMu sync.Mutex
 	csqttCredCacheAt time.Time
 	csqttCredBase    string
 	csqttCredUser    string
 	csqttCredPass    string
+	csqttCredProbe   csqttProbe
 )
 
+type csqttProbe struct {
+	present   bool
+	envPath   string
+	envErr    error // nil if read ok (even if pass empty)
+	envDenied bool
+	webPort   uint16
+}
+
 func csqttLocalCreds() (base, user, pass string) {
+	base, user, pass, _ = csqttLocalCredsProbe()
+	return
+}
+
+func csqttLocalCredsProbe() (base, user, pass string, probe csqttProbe) {
 	csqttCredCacheMu.Lock()
 	defer csqttCredCacheMu.Unlock()
 	if time.Since(csqttCredCacheAt) < 20*time.Second && csqttCredPass != "" {
-		return csqttCredBase, csqttCredUser, csqttCredPass
+		return csqttCredBase, csqttCredUser, csqttCredPass, csqttCredProbe
 	}
+
 	user = "admin"
-	port := uint16(46002)
-	applyCsqttUnitFile("/etc/systemd/system/csqtt.service", &port)
-	applyCsqttEnvFile("/etc/csqtt/csqtt.env", &user, &pass, &port)
+	port := csqttDefaultWebPort
+	probe = csqttProbe{envPath: csqttEnvPath, webPort: port}
+
+	unitPaths := []string{
+		"/etc/systemd/system/csqtt.service",
+		"/lib/systemd/system/csqtt.service",
+		"/usr/lib/systemd/system/csqtt.service",
+	}
+	envPaths := []string{csqttEnvPath}
+	for _, u := range unitPaths {
+		applyCsqttUnitFile(u, &port, &envPaths)
+	}
+	envReadOK := false
+	for _, p := range uniqueNonEmpty(envPaths) {
+		err := applyCsqttEnvFileErr(p, &user, &pass, &port)
+		probe.envPath = p
+		probe.envErr = err
+		if err == nil {
+			envReadOK = true
+			break
+		}
+		if !os.IsNotExist(err) {
+			log.Printf("[CSQTT] не прочитан %s: %v", p, err)
+			if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "permission") {
+				probe.envDenied = true
+			}
+		}
+	}
 	applyCsqttProcess(&user, &pass, &port)
 	if pass == "" && csqttMainPID() > 0 {
 		applyCsqttJournalPass(&pass)
 	}
+
+	probe.webPort = port
+	probe.present = pass != "" || envReadOK || csqttPresent(port)
+	if !probe.present && (csqttPathExists(probe.envPath) || csqttUnitExists()) {
+		probe.present = true
+	}
+
 	base = fmt.Sprintf("https://127.0.0.1:%d", port)
 	csqttCredBase, csqttCredUser, csqttCredPass = base, user, pass
+	csqttCredProbe = probe
 	csqttCredCacheAt = time.Now()
 	return
 }
@@ -44,17 +99,18 @@ func csqttLocalCreds() (base, user, pass string) {
 func csqttInvalidateCreds() {
 	csqttCredCacheMu.Lock()
 	csqttCredPass = ""
+	csqttCredProbe = csqttProbe{}
 	csqttCredCacheAt = time.Time{}
 	csqttCredCacheMu.Unlock()
 }
 
-func applyCsqttEnvFile(path string, user, pass *string, port *uint16) {
+func applyCsqttEnvFileErr(path string, user, pass *string, port *uint16) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Printf("[CSQTT] не прочитан %s: %v", path, err)
-		}
-		return
+		return err
+	}
+	if len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		b = b[3:]
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		k, v, ok := parseEnvAssignment(line)
@@ -63,15 +119,25 @@ func applyCsqttEnvFile(path string, user, pass *string, port *uint16) {
 		}
 		applyCsqttEnvKV(k, v, user, pass, port)
 	}
+	return nil
 }
 
-func applyCsqttUnitFile(path string, port *uint16) {
+func applyCsqttUnitFile(path string, port *uint16, envPaths *[]string) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "EnvironmentFile=") {
+			raw := strings.TrimPrefix(line, "EnvironmentFile=")
+			raw = strings.TrimPrefix(raw, "-")
+			raw = strings.TrimSpace(raw)
+			if raw != "" && envPaths != nil {
+				*envPaths = append(*envPaths, raw)
+			}
+			continue
+		}
 		if !strings.HasPrefix(line, "ExecStart=") {
 			continue
 		}
@@ -144,7 +210,7 @@ func applyCsqttProcess(user, pass *string, port *uint16) {
 }
 
 func applyCsqttEnvKV(k, v string, user, pass *string, port *uint16) {
-	switch k {
+	switch strings.ToUpper(k) {
 	case "CSQTT_WEB_USER":
 		if v != "" {
 			*user = v
@@ -189,6 +255,11 @@ func csqttMainPID() int {
 			return n
 		}
 	}
+	if out, err := runCmd("systemctl", "show", "-p", "MainPID", "--value", "csqtt"); err == nil {
+		if n, err := strconv.Atoi(strings.TrimSpace(out)); err == nil && n > 1 {
+			return n
+		}
+	}
 	if out, err := runCmd("systemctl", "show", "-p", "MainPID", "csqtt"); err == nil {
 		for _, line := range strings.Split(out, "\n") {
 			line = strings.TrimSpace(line)
@@ -214,13 +285,20 @@ func csqttMainPID() int {
 		if name == "" || !unicode.IsDigit(rune(name[0])) {
 			continue
 		}
-		comm, err := os.ReadFile(filepath.Join("/proc", name, "comm"))
-		if err != nil {
-			continue
+		base := filepath.Join("/proc", name)
+		if comm, err := os.ReadFile(filepath.Join(base, "comm")); err == nil {
+			c := strings.TrimSpace(string(comm))
+			if c == "csqtt" || strings.HasPrefix(c, "csqtt") {
+				n, _ := strconv.Atoi(name)
+				return n
+			}
 		}
-		if strings.TrimSpace(string(comm)) == "csqtt" {
-			n, _ := strconv.Atoi(name)
-			return n
+		if cmd, err := os.ReadFile(filepath.Join(base, "cmdline")); err == nil {
+			s := string(bytes.ReplaceAll(cmd, []byte{0}, []byte{' '}))
+			if strings.Contains(s, "/csqtt") || strings.Contains(s, "csqtt --") || strings.HasPrefix(strings.TrimSpace(s), "csqtt ") {
+				n, _ := strconv.Atoi(name)
+				return n
+			}
 		}
 	}
 	return 0
@@ -251,12 +329,81 @@ func applyCsqttJournalPass(pass *string) {
 	}
 }
 
+// csqttInstalled is kept for callers; presence is broader than a single binary path.
 func csqttInstalled() bool {
-	if _, err := os.Stat("/usr/local/bin/csqtt"); err == nil {
+	return csqttPresent(csqttDefaultWebPort)
+}
+
+func csqttPresent(webPort uint16) bool {
+	bins := []string{
+		"/usr/local/bin/csqtt",
+		"/usr/bin/csqtt",
+		"/opt/csqtt/csqtt",
+	}
+	for _, p := range bins {
+		if csqttPathExists(p) {
+			return true
+		}
+	}
+	if _, err := exec.LookPath("csqtt"); err == nil {
 		return true
 	}
-	if _, err := os.Stat("/etc/csqtt/passwords.json"); err == nil {
+	if csqttUnitExists() {
 		return true
 	}
-	return csqttMainPID() > 0
+	if csqttPathExists(csqttEnvPath) || csqttPathExists("/etc/csqtt/passwords.json") || csqttPathExists("/etc/csqtt") {
+		return true
+	}
+	if csqttMainPID() > 0 {
+		return true
+	}
+	if webPort == 0 {
+		webPort = csqttDefaultWebPort
+	}
+	return csqttWebListening(webPort)
+}
+
+func csqttUnitExists() bool {
+	for _, p := range []string{
+		"/etc/systemd/system/csqtt.service",
+		"/lib/systemd/system/csqtt.service",
+		"/usr/lib/systemd/system/csqtt.service",
+	} {
+		if csqttPathExists(p) {
+			return true
+		}
+	}
+	return false
+}
+
+func csqttPathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func csqttWebListening(port uint16) bool {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	c, err := net.DialTimeout("tcp", addr, 400*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = c.Close()
+	return true
+}
+
+func uniqueNonEmpty(in []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }

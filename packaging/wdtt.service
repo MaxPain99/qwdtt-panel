@@ -20,6 +20,8 @@ ProtectKernelLogs=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
+# CSQTT: панель читает /etc/csqtt/csqtt.env. ProtectHome /etc не блокирует.
+# При ProtectSystem=strict добавьте: ReadOnlyPaths=/etc/csqtt
 
 [Install]
 WantedBy=multi-user.target
