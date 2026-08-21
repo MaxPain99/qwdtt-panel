@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Rebuild wdtt-server from MaxPain99/qwdtt-panel. Does not rewrite wdtt.service.
+# Rebuild wdtt-server + qwdtt-panel from MaxPain99/qwdtt-panel (GitHub).
+# Does not rewrite systemd unit files.
 set -euo pipefail
 
 readonly LOG_FILE="/var/log/qwdtt-panel-update.log"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
 readonly BIN_PATH="${QWDTT_BIN:-/usr/local/bin/wdtt-server}"
+readonly PANEL_BIN_PATH="${QWDTT_PANEL_BIN:-/usr/local/bin/qwdtt-panel}"
 readonly REPO_URL="${QWDTT_REPO:-https://github.com/MaxPain99/qwdtt-panel.git}"
 readonly REPO_BRANCH="${QWDTT_BRANCH:-master}"
 readonly HELPER="/usr/local/lib/qwdtt/update-server.sh"
@@ -37,14 +39,18 @@ fi
 (
   cd "$SRC_DIR"
   go build -trimpath -ldflags '-s -w' -o /tmp/wdtt-server ./server
+  go build -tags qwdtt_panel -trimpath -ldflags '-s -w' -o /tmp/qwdtt-panel ./server
 )
 install -m 0755 /tmp/wdtt-server "$BIN_PATH"
-rm -f /tmp/wdtt-server
+install -m 0755 /tmp/qwdtt-panel "$PANEL_BIN_PATH"
+rm -f /tmp/wdtt-server /tmp/qwdtt-panel
 
 if [ -f "${SRC_DIR}/server/update-server.sh" ]; then
   install -m 0755 "${SRC_DIR}/server/update-server.sh" "$HELPER"
 fi
 
-echo "бинарник обновлён, systemd unit не трогаю, restart wdtt"
+echo "бинарники обновлены, units не трогаю"
 systemctl restart wdtt
+sleep 1
+systemctl restart qwdtt-panel || true
 echo "=== готово $(date -Iseconds) ==="

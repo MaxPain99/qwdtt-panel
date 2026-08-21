@@ -235,6 +235,7 @@ type socksPortInfo struct {
 	Free      bool   `json:"free"`
 	Listening bool   `json:"listening"`
 	SocksOK   bool   `json:"socks_ok"`
+	UdpOK     bool   `json:"udp_ok"`
 	Allow     bool   `json:"allow"`
 	Message   string `json:"message"`
 }
@@ -268,17 +269,29 @@ func socksInspect(p SocksProfile) socksPortInfo {
 		return info
 	}
 	info.Listening = true
-	if err := socksProbe(p); err != nil {
+	if err := socksProbeTCP(p); err != nil {
 		info.Message = fmt.Sprintf("порт %d занят, но это не SOCKS5: %v", p.Port, err)
 		return info
 	}
 	info.SocksOK = true
+	if err := socksProbeUDP(p); err != nil {
+		info.Message = fmt.Sprintf("SOCKS5 TCP OK, но UDP не работает: %v", err)
+		return info
+	}
+	info.UdpOK = true
 	info.Allow = true
-	info.Message = fmt.Sprintf("порт %d занят, SOCKS5 отвечает — можно", p.Port)
+	info.Message = fmt.Sprintf("порт %d — SOCKS5 TCP+UDP OK, можно включать", p.Port)
 	return info
 }
 
 func socksProbe(p SocksProfile) error {
+	if err := socksProbeTCP(p); err != nil {
+		return err
+	}
+	return socksProbeUDP(p)
+}
+
+func socksProbeTCP(p SocksProfile) error {
 	c, err := socksTCPDial(p, 3*time.Second)
 	if err != nil {
 		return fmt.Errorf("SOCKS %s недоступен: %w", socksDialAddr(p), err)
@@ -287,6 +300,52 @@ func socksProbe(p SocksProfile) error {
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
 	if err := socks5Handshake(c, p.Username, p.Password); err != nil {
 		return err
+	}
+	return nil
+}
+
+// socksProbeUDP — как в CSQTT: UDP ASSOCIATE + DNS-запрос через relay.
+func socksProbeUDP(p SocksProfile) error {
+	assoc, err := socks5UDPAssociate(p)
+	if err != nil {
+		return fmt.Errorf("UDP ASSOCIATE: %w (включите UDP в инбаунде SOCKS/mixed)", err)
+	}
+	defer assoc.ctrl.Close()
+
+	uconn, err := net.DialUDP("udp4", nil, assoc.relay)
+	if err != nil {
+		return fmt.Errorf("UDP relay: %w", err)
+	}
+	defer uconn.Close()
+	_ = uconn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	dst := &net.UDPAddr{IP: net.IPv4(1, 1, 1, 1), Port: 53}
+	q := []byte{
+		0x12, 0x34,
+		0x01, 0x00,
+		0x00, 0x01,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
+		0x03, 'c', 'o', 'm',
+		0x00,
+		0x00, 0x01,
+		0x00, 0x01,
+	}
+	pkt := socksUDPEncode(dst, q)
+	if pkt == nil {
+		return errors.New("UDP encode")
+	}
+	if _, err := uconn.Write(pkt); err != nil {
+		return fmt.Errorf("UDP write: %w", err)
+	}
+	buf := make([]byte, 2048)
+	n, err := uconn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("нет UDP-ответа — включите UDP в SOCKS/mixed: %w", err)
+	}
+	_, payload, err := socksUDPDecode(buf[:n])
+	if err != nil || len(payload) < 12 {
+		return errors.New("неверный UDP-ответ SOCKS")
 	}
 	return nil
 }

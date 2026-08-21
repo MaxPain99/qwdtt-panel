@@ -5,20 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>qWDTT</title>
 <style>
-body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#0f1419;color:#e7ecf1;display:flex;min-height:100vh;align-items:center;justify-content:center}
-form{background:#1a222c;padding:28px;border-radius:12px;width:min(360px,92vw);box-shadow:0 8px 32px #0008}
-h1{margin:0 0 8px;font-size:1.25rem}
-p{margin:0 0 18px;color:#8b9aab;font-size:.9rem}
-label{display:block;margin:10px 0 4px;font-size:.85rem;color:#9fb0c0}
-input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #334155;border-radius:8px;background:#0f1419;color:#e7ecf1}
-button{margin-top:16px;width:100%;padding:10px;border:0;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer}
-.err{color:#f87171;min-height:1.2em;margin-top:10px;font-size:.9rem}
+:root{--bg:#f8fafc;--surface:#fff;--primary:#0077ff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;--bad:#ef4444}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh;align-items:center;justify-content:center}
+form{background:var(--surface);padding:36px 32px;border-radius:20px;width:min(400px,92vw);border:1px solid var(--border);box-shadow:0 20px 40px rgba(15,23,42,.06)}
+h1{margin:0 0 8px;font-size:1.4rem;text-align:center}
+p{margin:0 0 22px;color:var(--muted);font-size:.9rem;text-align:center}
+label{display:block;margin:10px 0 6px;font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+input{width:100%;height:48px;box-sizing:border-box;padding:0 14px;border:1px solid var(--border);border-radius:12px;background:var(--bg);color:var(--text);outline:none}
+input:focus{border-color:var(--primary);box-shadow:0 0 0 4px rgba(0,119,255,.12)}
+button{margin-top:18px;width:100%;height:48px;border:0;border-radius:12px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;box-shadow:0 8px 16px rgba(0,119,255,.25)}
+button:hover{filter:brightness(.95)}
+.err{color:var(--bad);min-height:1.2em;margin-top:12px;font-size:.9rem;text-align:center}
 </style>
 </head>
 <body>
 <form method="post" action="/login">
-<h1>qWDTT панель</h1>
-<p>Тот же процесс, что и wdtt-server. Клиентский APK не меняется.</p>
+<h1>Вход</h1>
+<p>Панель qWDTT / CSQTT</p>
 <label>Логин</label>
 <input name="user" autocomplete="username" required>
 <label>Пароль</label>
