@@ -673,30 +673,23 @@ func getNextIP() string {
 	for _, dev := range db.Devices {
 		used[dev.IP] = true
 	}
-	for b3 := 0; b3 <= 255; b3++ {
-		if b3 == csqttTUNSubnetThirdOctet {
-			continue // 10.66.67.0/24 — CSQTT csqtt1
-		}
-		for b4 := 1; b4 <= 254; b4++ {
-			ip := fmt.Sprintf("10.66.%d.%d", b3, b4)
-			if ip == wgServerAddr {
-				continue
-			}
-			if !used[ip] {
-				return ip
-			}
+	// Только 10.66.66.0/24 (CSQTT — 10.66.67.0/24).
+	for b4 := 2; b4 <= 254; b4++ {
+		ip := fmt.Sprintf("10.66.66.%d", b4)
+		if !used[ip] {
+			return ip
 		}
 	}
 	return ""
 }
 
-// ipInCSQTTTUN is true for addresses reserved for CSQTT TUN (inside wdtt /16).
-func ipInCSQTTTUN(ip string) bool {
+// ipInWGTUN — адрес из подсети wdtt0 (10.66.66.0/24).
+func ipInWGTUN(ip string) bool {
 	var a, b, c, d int
 	if _, err := fmt.Sscanf(ip, "%d.%d.%d.%d", &a, &b, &c, &d); err != nil {
 		return false
 	}
-	return a == 10 && b == 66 && c == csqttTUNSubnetThirdOctet
+	return a == 10 && b == 66 && c == 66 && d >= 1 && d <= 254
 }
 
 func getNextRawIP() string {
