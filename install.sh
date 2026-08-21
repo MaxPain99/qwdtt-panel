@@ -7,7 +7,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 set -euo pipefail
 
-readonly SCRIPT_VERSION="3.3"
+readonly SCRIPT_VERSION="3.4"
 readonly REPO_URL="${QWDTT_REPO:-https://github.com/MaxPain99/qwdtt-panel.git}"
 readonly REPO_BRANCH="${QWDTT_BRANCH:-master}"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
@@ -270,13 +270,15 @@ patch_csqtt_gnu() {
 
 build_csqtt_binary() {
     ensure_rust
+    ensure_lowmem_swap
     fetch_csqtt_sources
     patch_csqtt_gnu
     # Upstream .cargo/config.toml по умолчанию тянет musl без zig/musl-gcc —
     # на VPS собираем под системный glibc (gnu), этого достаточно для systemd.
-    local triple
+    local triple jobs
     triple="$(csqtt_host_gnu_target)"
-    log_info "сборка CSQTT (cargo release, target=${triple})..."
+    jobs="$(cargo_jobs_for_ram)"
+    log_info "сборка CSQTT (cargo release, target=${triple}, jobs=${jobs})..."
     (
         cd "${CSQTT_SRC_DIR}/csqtt-uring"
         # Не даём config.toml подменить target на musl.
@@ -286,6 +288,7 @@ build_csqtt_binary() {
         # shellcheck disable=SC1091
         [ -f /root/.cargo/env ] && . /root/.cargo/env
         export PATH="/root/.cargo/bin:${HOME}/.cargo/bin:${PATH}"
+        export CARGO_BUILD_JOBS="$jobs"
         rustup target add "$triple" >>"$LOG_FILE" 2>&1 || true
         set +e
         cargo build --release --target "$triple" >>"$LOG_FILE" 2>&1
@@ -307,7 +310,83 @@ build_csqtt_binary() {
     [ -n "$built" ] || die "после сборки нет бинарника csqtt"
     install -m 0755 "$built" "$CSQTT_BIN"
     install -m 0755 "$built" /tmp/csqtt
+    # target/ легко съедает гигабайты и провоцирует OOM/полную диск.
+    rm -rf "${CSQTT_SRC_DIR}/csqtt-uring/target" 2>/dev/null || true
     log_info "установлен $CSQTT_BIN (${triple})"
+}
+
+mem_total_mb() {
+    awk '/MemTotal:/ {printf "%d", $2/1024; exit}' /proc/meminfo 2>/dev/null || echo 0
+}
+
+swap_total_mb() {
+    awk '/SwapTotal:/ {printf "%d", $2/1024; exit}' /proc/meminfo 2>/dev/null || echo 0
+}
+
+# Сборка aws-lc + cargo на 1 ГБ RAM часто вешает VPS. Даём swap заранее.
+ensure_lowmem_swap() {
+    local mem swap need=2048
+    mem="$(mem_total_mb)"
+    swap="$(swap_total_mb)"
+    log_info "RAM=${mem}M swap=${swap}M"
+    if [ "$mem" -ge 3000 ]; then
+        return 0
+    fi
+    if [ "$swap" -ge 1500 ]; then
+        return 0
+    fi
+    if [ -f /swapfile-qwdtt ] || swapon --show=NAME --noheadings 2>/dev/null | grep -q .; then
+        log_info "swap уже есть"
+        return 0
+    fi
+    log_warn "мало RAM — создаю /swapfile-qwdtt (${need}M), иначе сборка CSQTT может повесить VPS"
+    fallocate -l "${need}M" /swapfile-qwdtt 2>/dev/null \
+        || dd if=/dev/zero of=/swapfile-qwdtt bs=1M count="$need" status=none
+    chmod 600 /swapfile-qwdtt
+    mkswap /swapfile-qwdtt >/dev/null
+    swapon /swapfile-qwdtt
+    grep -q swapfile-qwdtt /etc/fstab 2>/dev/null \
+        || echo '/swapfile-qwdtt none swap sw 0 0' >> /etc/fstab
+}
+
+cargo_jobs_for_ram() {
+    local mem
+    mem="$(mem_total_mb)"
+    if [ "$mem" -lt 1800 ]; then
+        echo 1
+    elif [ "$mem" -lt 3200 ]; then
+        echo 2
+    else
+        echo "${CARGO_BUILD_JOBS:-$(nproc 2>/dev/null || echo 2)}"
+    fi
+}
+
+# Официальный deploy.sh ставит nf_conntrack_max=1048576 — на 1–2 ГБ VPS это OOM.
+soften_csqtt_sysctl() {
+    local mem max=262144 f="/etc/sysctl.d/99-csqtt.conf"
+    mem="$(mem_total_mb)"
+    if [ "$mem" -lt 1500 ]; then
+        max=65536
+    elif [ "$mem" -lt 3000 ]; then
+        max=131072
+    fi
+    if [ -f "$f" ] && grep -q nf_conntrack_max "$f" 2>/dev/null; then
+        sed -i "s/net.netfilter.nf_conntrack_max *= *[0-9]*/net.netfilter.nf_conntrack_max = ${max}/" "$f" || true
+    fi
+    sysctl -w "net.netfilter.nf_conntrack_max=${max}" >/dev/null 2>&1 || true
+    log_info "conntrack_max=${max} (смягчено под ${mem}M RAM)"
+}
+
+patch_deploy_sh_for_small_vps() {
+    local sh="$1" mem max=262144
+    mem="$(mem_total_mb)"
+    if [ "$mem" -lt 1500 ]; then
+        max=65536
+    elif [ "$mem" -lt 3000 ]; then
+        max=131072
+    fi
+    # Не даём deploy.sh выставить миллион conntrack на слабый VPS.
+    sed -i "s/net.netfilter.nf_conntrack_max = 1048576/net.netfilter.nf_conntrack_max = ${max}/" "$sh" || true
 }
 
 # Кладёт рабочий бинарник в /tmp/csqtt (как Android перед deploy.sh).
@@ -371,6 +450,7 @@ run_official_csqtt_deploy() {
     curl -fL --retry 3 -o /tmp/csqtt-deploy.sh "$CSQTT_DEPLOY_URL" \
         || die "не скачать $CSQTT_DEPLOY_URL"
     chmod +x /tmp/csqtt-deploy.sh
+    patch_deploy_sh_for_small_vps /tmp/csqtt-deploy.sh
     log_info "запуск amurcanov/csqtt deploy.sh (systemd)..."
     # Тот же вызов, что делает Android DeployOperations.
     env CSQTT_PEER_PORT="$CSQTT_PEER_PORT" \
@@ -380,6 +460,7 @@ run_official_csqtt_deploy() {
         bash /tmp/csqtt-deploy.sh install >>"$LOG_FILE" 2>&1 \
         || die "deploy.sh CSQTT не удался, см. $LOG_FILE и /var/log/csqtt-install.log"
     rm -f /tmp/csqtt-deploy.sh
+    soften_csqtt_sysctl
     log_info "официальный deploy.sh завершён"
 }
 
