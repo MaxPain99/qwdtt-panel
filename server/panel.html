@@ -54,7 +54,7 @@ body.modal-open{overflow:hidden}
 <div>qWDTT <b>панель</b></div>
 <div class="row" style="margin:0">
 <button class="ghost" type="button" onclick="upd()">Обновить сервер</button>
-<button class="ghost" type="button" onclick="reboot()">Reboot</button>
+<button class="ghost" type="button" onclick="reboot()">Перезагрузить</button>
 <button class="ghost" type="button" onclick="location.href='/logout'">Выйти</button>
 </div>
 </header>
@@ -73,12 +73,12 @@ body.modal-open{overflow:hidden}
 <div class="sec">
 <h2>SOCKS5</h2>
 </div>
-<p class="off">Весь трафик клиентов с TUN идёт в <b>один</b> SOCKS5. Порт задаёте сами: должен быть занят прокси, не свободен и не порты qWDTT.</p>
+<p class="off">Весь трафик клиентов с TUN идёт в <b>один</b> SOCKS5. Порт задаёте сами: должен быть занят прокси, не свободен и не порты qWDTT. Если у прокси нет логина и пароля — эти поля оставьте пустыми.</p>
 <form id="socks-form" class="row" onsubmit="return enableSocks(event)">
 <input name="host" value="127.0.0.1" placeholder="127.0.0.1">
 <input name="port" type="number" min="1" max="65535" placeholder="Порт" required style="width:110px;flex:0" oninput="schedulePortCheck()">
-<input name="username" placeholder="Логин">
-<input name="password" type="password" placeholder="Пароль">
+<input name="username" placeholder="Логин, если есть">
+<input name="password" type="password" placeholder="Пароль, если есть">
 <button class="ghost" type="button" onclick="checkSocksPort()">Проверить порт</button>
 <button type="submit" id="socks-add">Включить</button>
 <button class="ghost" type="button" onclick="socksOff()">Выключить</button>
