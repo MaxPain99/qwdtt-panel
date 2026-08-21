@@ -12,15 +12,17 @@ SOCKS5 один на оба туннеля: TPROXY с `wdtt0`, `wdttraw0` и `cs
 
 Если вкладка CSQTT пишет «не найден» или «нет доступа к …/csqtt.env»: убедитесь, что `csqtt` запущен, в `/etc/csqtt/csqtt.env` есть `CSQTT_WEB_PASS`, и процесс `wdtt-server` может читать этот файл (в unit достаточно `ReadOnlyPaths=/etc/csqtt`; `ProtectHome=true` путь `/etc` не закрывает). `install.sh update` unit не переписывает — при необходимости добавьте `ReadOnlyPaths` вручную и `systemctl daemon-reload && systemctl restart wdtt`.
 
-Установка на VPS:
+Установка на VPS (qWDTT-панель **и** CSQTT рядом):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 ```
 
-Панель: `https://IP:46102` (self-signed). Запуск — рабочий SpaceNeuroX `wdtt.service` плюс только `-web-port 46102` и INPUT TCP 46102. Остальные флаги не трогаем.
+Поднимаются `wdtt.service` (`:46102`) и `csqtt.service` (peer UDP `:46000`, web `:46002`, TUN `csqtt1`). Бинарник CSQTT: уже стоящий `/usr/local/bin/csqtt`, или `CSQTT_BIN_URL`, или `/tmp/csqtt`, иначе сборка из [amurcanov/csqtt](https://github.com/amurcanov/csqtt) (`CSQTT_BUILD=1`). Пропуск CSQTT: `SKIP_CSQTT=1`. Учётки: `/etc/wdtt/credentials.txt`.
 
-Обновление бинарника: кнопка в панели или `sudo bash /opt/qwdtt-panel/install.sh update`. Существующий `wdtt.service` не переписывается. Записать эталонный unit: `install.sh write-unit`.
+Панель: `https://IP:46102` (self-signed). Запуск qWDTT — SpaceNeuroX `wdtt.service` плюс `-web-port 46102` и INPUT TCP 46102.
+
+Обновление обоих: `sudo bash /opt/qwdtt-panel/install.sh update` (живые unit-файлы не переписывает). Эталонные unit: `install.sh write-unit`.
 
 Не пушьте эту ветку в SpaceNeuroX — только в `MaxPain99/qwdtt-panel`.
 

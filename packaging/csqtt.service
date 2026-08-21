@@ -1,0 +1,24 @@
+[Unit]
+Description=CSQTT VPN Server
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=20
+StartLimitBurst=5
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/csqtt/csqtt.env
+Environment=CSQTT_SERVICE_MANAGER=systemd
+ExecStartPre=-/usr/bin/env bash -c "ip link show csqtt1 >/dev/null 2>&1 && ip link del csqtt1 2>/dev/null || true"
+ExecStartPre=/usr/local/lib/csqtt/network-up.sh
+ExecStart=/usr/local/bin/csqtt --listen 0.0.0.0:46000 --web-port 46002 --config-dir /etc/csqtt
+Restart=on-failure
+RestartSec=1
+KillMode=control-group
+TimeoutStartSec=30
+TimeoutStopSec=5
+LimitNOFILE=65535
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target

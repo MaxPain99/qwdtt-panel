@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# qWDTT HTTPS panel installer. Launch flags = packaging/wdtt.service
-# (stock SpaceNeuroX unit + -web-port 46102 and TCP 46102).
+# qWDTT HTTPS panel + CSQTT side-by-side installer.
+# qWDTT: packaging/wdtt.service (SpaceNeuroX + -web-port 46102).
+# CSQTT: packaging/csqtt.service (ports 46000/46002, TUN csqtt1) — binary from
+# existing path, CSQTT_BIN_URL, /tmp/csqtt, or build from amurcanov/csqtt (no
+# copying of their deploy.sh).
 #
 #   curl -fsSL https://raw.githubusercontent.com/MaxPain99/qwdtt-panel/master/install.sh | sudo bash
 set -euo pipefail
 
-readonly SCRIPT_VERSION="2.0"
+readonly SCRIPT_VERSION="3.0"
 readonly REPO_URL="${QWDTT_REPO:-https://github.com/MaxPain99/qwdtt-panel.git}"
 readonly REPO_BRANCH="${QWDTT_BRANCH:-master}"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
@@ -16,10 +19,24 @@ readonly CRED_FILE="${CONFIG_DIR}/credentials.txt"
 readonly UNIT_PATH="/etc/systemd/system/wdtt.service"
 readonly GO_VERSION="${QWDTT_GO_VERSION:-1.25.0}"
 
+readonly CSQTT_REPO_URL="${CSQTT_REPO:-https://github.com/amurcanov/csqtt.git}"
+readonly CSQTT_SRC_DIR="${CSQTT_SRC_DIR:-/opt/csqtt-src}"
+readonly CSQTT_BIN="/usr/local/bin/csqtt"
+readonly CSQTT_CONFIG_DIR="/etc/csqtt"
+readonly CSQTT_ENV_FILE="${CSQTT_CONFIG_DIR}/csqtt.env"
+readonly CSQTT_UNIT_PATH="/etc/systemd/system/csqtt.service"
+readonly CSQTT_PEER_PORT="${CSQTT_PEER_PORT:-46000}"
+readonly CSQTT_WEB_PORT="${CSQTT_WEB_PORT:-46002}"
+# 1 = try cargo build if no binary; 0 = require existing binary / URL /tmp/csqtt
+readonly CSQTT_BUILD="${CSQTT_BUILD:-1}"
+
 WEB_PORT="${QWDTT_WEB_PORT:-46102}"
 WEB_USER="${QWDTT_WEB_USER:-admin}"
 OWNER_PASS="${QWDTT_PASSWORD:-}"
 WEB_PASS="${QWDTT_WEB_PASS:-}"
+CSQTT_WEB_USER="${CSQTT_WEB_USER:-admin}"
+CSQTT_WEB_PASS="${CSQTT_WEB_PASS:-}"
+SKIP_CSQTT="${SKIP_CSQTT:-0}"
 
 log_info()  { echo "[+] $*" | tee -a "$LOG_FILE"; }
 log_warn()  { echo "[!] $*" | tee -a "$LOG_FILE"; }
@@ -59,19 +76,19 @@ os_packages() {
         ubuntu|debian|linuxmint|pop)
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -y >>"$LOG_FILE" 2>&1 || true
-            apt-get install -y -qq ca-certificates curl git openssl iproute2 iptables procps >>"$LOG_FILE" 2>&1 \
+            apt-get install -y -qq ca-certificates curl git openssl iproute2 iptables procps build-essential pkg-config >>"$LOG_FILE" 2>&1 \
                 || die "apt: не удалось поставить пакеты"
             ;;
         fedora)
-            dnf install -y ca-certificates curl git openssl iproute iptables procps-ng >>"$LOG_FILE" 2>&1 \
+            dnf install -y ca-certificates curl git openssl iproute iptables procps-ng gcc make pkgconf-pkg-config >>"$LOG_FILE" 2>&1 \
                 || die "dnf: не удалось поставить пакеты"
             ;;
         centos|rhel|rocky|almalinux|oracle)
             if command -v dnf >/dev/null 2>&1; then
-                dnf install -y ca-certificates curl git openssl iproute iptables procps-ng >>"$LOG_FILE" 2>&1 \
+                dnf install -y ca-certificates curl git openssl iproute iptables procps-ng gcc make pkgconf-pkg-config >>"$LOG_FILE" 2>&1 \
                     || die "dnf: не удалось поставить пакеты"
             else
-                yum install -y ca-certificates curl git openssl iproute iptables procps-ng >>"$LOG_FILE" 2>&1 \
+                yum install -y ca-certificates curl git openssl iproute iptables procps-ng gcc make pkgconfig >>"$LOG_FILE" 2>&1 \
                     || die "yum: не удалось поставить пакеты"
             fi
             ;;
@@ -172,12 +189,19 @@ seed_secrets() {
             -subj "/CN=qwdtt-admin" >/dev/null 2>&1 || die "admin TLS"
         chmod 600 "${CONFIG_DIR}/admin.key" "${CONFIG_DIR}/admin.crt"
     fi
+}
 
+write_credentials() {
     cat > "$CRED_FILE" <<EOF
 PANEL_URL=https://$(public_ip):${WEB_PORT}
 WEB_USER=${WEB_USER}
 WEB_PASS=${WEB_PASS}
 OWNER_PASSWORD=${OWNER_PASS}
+CSQTT_PEER_PORT=${CSQTT_PEER_PORT}
+CSQTT_WEB_PORT=${CSQTT_WEB_PORT}
+CSQTT_WEB_USER=${CSQTT_WEB_USER}
+CSQTT_WEB_PASS=${CSQTT_WEB_PASS}
+CSQTT_ENV=${CSQTT_ENV_FILE}
 EOF
     chmod 600 "$CRED_FILE"
 }
@@ -189,13 +213,191 @@ write_unit() {
     systemctl daemon-reload
     systemctl unmask wdtt >/dev/null 2>&1 || true
     systemctl enable wdtt >/dev/null 2>&1 || true
-    log_info "unit: stock SpaceNeuroX + -web-port ${WEB_PORT}"
+    log_info "unit wdtt: stock SpaceNeuroX + -web-port ${WEB_PORT}"
+}
+
+ensure_rust() {
+    export PATH="${HOME}/.cargo/bin:/root/.cargo/bin:${PATH}"
+    if command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1; then
+        log_info "Rust: $(rustc --version 2>/dev/null | head -1)"
+        return 0
+    fi
+    log_info "ставим rustup (для сборки CSQTT)..."
+    curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain stable >>"$LOG_FILE" 2>&1 \
+        || die "rustup не установился"
+    # shellcheck disable=SC1091
+    [ -f /root/.cargo/env ] && . /root/.cargo/env
+    export PATH="/root/.cargo/bin:${PATH}"
+    command -v cargo >/dev/null 2>&1 || die "cargo не найден после rustup"
+}
+
+fetch_csqtt_sources() {
+    if [ -d "${CSQTT_SRC_DIR}/.git" ]; then
+        git -C "$CSQTT_SRC_DIR" remote set-url origin "$CSQTT_REPO_URL" >>"$LOG_FILE" 2>&1 || true
+        git -C "$CSQTT_SRC_DIR" fetch --depth 1 origin HEAD >>"$LOG_FILE" 2>&1 || die "git fetch csqtt"
+        git -C "$CSQTT_SRC_DIR" checkout -q FETCH_HEAD >>"$LOG_FILE" 2>&1 || die "git checkout csqtt"
+    else
+        rm -rf "$CSQTT_SRC_DIR"
+        git clone --depth 1 "$CSQTT_REPO_URL" "$CSQTT_SRC_DIR" >>"$LOG_FILE" 2>&1 || die "git clone csqtt"
+    fi
+    [ -d "${CSQTT_SRC_DIR}/csqtt-uring" ] || die "нет ${CSQTT_SRC_DIR}/csqtt-uring"
+}
+
+build_csqtt_binary() {
+    ensure_rust
+    fetch_csqtt_sources
+    log_info "сборка CSQTT (cargo release)..."
+    (
+        cd "${CSQTT_SRC_DIR}/csqtt-uring"
+        cargo build --release >>"$LOG_FILE" 2>&1
+    ) || die "сборка CSQTT не удалась, см. $LOG_FILE (или задайте CSQTT_BIN_URL / положите /tmp/csqtt)"
+    local built=""
+    for p in \
+        "${CSQTT_SRC_DIR}/csqtt-uring/target/release/csqtt" \
+        "${CSQTT_SRC_DIR}/target/release/csqtt"
+    do
+        [ -x "$p" ] && built="$p" && break
+    done
+    [ -n "$built" ] || die "после сборки нет бинарника csqtt"
+    install -m 0755 "$built" "$CSQTT_BIN"
+    log_info "установлен $CSQTT_BIN"
+}
+
+obtain_csqtt_binary() {
+    if [ -n "${CSQTT_BIN_URL:-}" ]; then
+        log_info "скачиваю CSQTT: $CSQTT_BIN_URL"
+        curl -fL --retry 3 -o /tmp/csqtt "$CSQTT_BIN_URL" || die "не скачать CSQTT_BIN_URL"
+        chmod +x /tmp/csqtt
+        install -m 0755 /tmp/csqtt "$CSQTT_BIN"
+        rm -f /tmp/csqtt
+        log_info "установлен $CSQTT_BIN из URL"
+        return 0
+    fi
+    if [ -f /tmp/csqtt ]; then
+        chmod +x /tmp/csqtt
+        install -m 0755 /tmp/csqtt "$CSQTT_BIN"
+        log_info "установлен $CSQTT_BIN из /tmp/csqtt"
+        return 0
+    fi
+    if [ -x "$CSQTT_BIN" ]; then
+        log_info "CSQTT уже есть: $CSQTT_BIN"
+        return 0
+    fi
+    if [ "$CSQTT_BUILD" = "1" ]; then
+        build_csqtt_binary
+        return 0
+    fi
+    die "нет CSQTT: положите /tmp/csqtt, задайте CSQTT_BIN_URL или CSQTT_BUILD=1"
+}
+
+seed_csqtt_env() {
+    mkdir -p "$CSQTT_CONFIG_DIR"
+    chmod 700 "$CSQTT_CONFIG_DIR"
+    if [ -z "$CSQTT_WEB_PASS" ] && [ -s "$CSQTT_ENV_FILE" ]; then
+        CSQTT_WEB_PASS="$(grep -E '^CSQTT_WEB_PASS=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r')"
+        CSQTT_WEB_USER="$(grep -E '^CSQTT_WEB_USER=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r')"
+        [ -n "$CSQTT_WEB_USER" ] || CSQTT_WEB_USER="admin"
+    fi
+    if [ -z "$CSQTT_WEB_PASS" ]; then
+        CSQTT_WEB_PASS="$WEB_PASS"
+    fi
+    [ -n "$CSQTT_WEB_USER" ] || CSQTT_WEB_USER="admin"
+    cat > "$CSQTT_ENV_FILE" <<EOF
+CSQTT_WEB_USER=${CSQTT_WEB_USER}
+CSQTT_WEB_PASS=${CSQTT_WEB_PASS}
+CSQTT_SECURE_COOKIE=false
+CSQTT_URING_MODE=defer
+CSQTT_PEER_PORT=${CSQTT_PEER_PORT}
+CSQTT_WEB_PORT=${CSQTT_WEB_PORT}
+EOF
+    chmod 600 "$CSQTT_ENV_FILE"
+    log_info "CSQTT env: $CSQTT_ENV_FILE"
+}
+
+write_csqtt_unit() {
+    local src_unit="${SRC_DIR}/packaging/csqtt.service"
+    local src_net="${SRC_DIR}/packaging/csqtt-network-up.sh"
+    [ -f "$src_unit" ] || die "нет $src_unit"
+    [ -f "$src_net" ] || die "нет $src_net"
+    mkdir -p /usr/local/lib/csqtt
+    install -m 0755 "$src_net" /usr/local/lib/csqtt/network-up.sh
+    sed -e "s/--listen 0.0.0.0:46000/--listen 0.0.0.0:${CSQTT_PEER_PORT}/" \
+        -e "s/--web-port 46002/--web-port ${CSQTT_WEB_PORT}/" \
+        "$src_unit" > /tmp/csqtt.service.$$
+    install -m 0644 /tmp/csqtt.service.$$ "$CSQTT_UNIT_PATH"
+    rm -f /tmp/csqtt.service.$$
+    systemctl daemon-reload
+    systemctl unmask csqtt >/dev/null 2>&1 || true
+    systemctl enable csqtt >/dev/null 2>&1 || true
+    log_info "unit csqtt: peer ${CSQTT_PEER_PORT}, web ${CSQTT_WEB_PORT}"
+}
+
+open_firewall() {
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
+        ufw allow 56000/udp >/dev/null 2>&1 || true
+        ufw allow 56002/udp >/dev/null 2>&1 || true
+        ufw allow 56003/udp >/dev/null 2>&1 || true
+        ufw allow "${WEB_PORT}/tcp" >/dev/null 2>&1 || true
+        ufw allow "${CSQTT_PEER_PORT}/udp" >/dev/null 2>&1 || true
+        ufw allow "${CSQTT_WEB_PORT}/tcp" >/dev/null 2>&1 || true
+    fi
+}
+
+install_csqtt_stack() {
+    if [ "$SKIP_CSQTT" = "1" ]; then
+        log_warn "SKIP_CSQTT=1 — CSQTT пропускаю"
+        CSQTT_WEB_PASS="${CSQTT_WEB_PASS:-(skipped)}"
+        return 0
+    fi
+    obtain_csqtt_binary
+    seed_csqtt_env
+    write_csqtt_unit
+    /usr/local/lib/csqtt/network-up.sh >>"$LOG_FILE" 2>&1 || log_warn "network-up.sh вернул ошибку — проверьте при старте csqtt"
+    systemctl restart csqtt
+    sleep 2
+    if ! systemctl is-active --quiet csqtt; then
+        log_error "csqtt не запустился"
+        journalctl -u csqtt -n 40 --no-pager | tee -a "$LOG_FILE" || true
+        exit 1
+    fi
+    log_info "csqtt.service активен"
+}
+
+update_csqtt_stack() {
+    if [ "$SKIP_CSQTT" = "1" ]; then
+        log_warn "SKIP_CSQTT=1 — CSQTT не обновляю"
+        return 0
+    fi
+    if [ ! -x "$CSQTT_BIN" ] && [ -z "${CSQTT_BIN_URL:-}" ] && [ ! -f /tmp/csqtt ] && [ "$CSQTT_BUILD" != "1" ]; then
+        log_warn "CSQTT ещё не установлен — пропускаю (полный install для первой установки)"
+        return 0
+    fi
+    obtain_csqtt_binary
+    if [ -s "$CSQTT_ENV_FILE" ]; then
+        CSQTT_WEB_PASS="$(grep -E '^CSQTT_WEB_PASS=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+        CSQTT_WEB_USER="$(grep -E '^CSQTT_WEB_USER=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+    fi
+    [ -n "${CSQTT_WEB_USER:-}" ] || CSQTT_WEB_USER="admin"
+    [ -n "${CSQTT_WEB_PASS:-}" ] || CSQTT_WEB_PASS="$WEB_PASS"
+    [ -n "$CSQTT_WEB_PASS" ] || CSQTT_WEB_PASS="$(rand_pass 16)"
+    seed_csqtt_env
+    if [ ! -f "$CSQTT_UNIT_PATH" ]; then
+        write_csqtt_unit
+    else
+        mkdir -p /usr/local/lib/csqtt
+        [ -f "${SRC_DIR}/packaging/csqtt-network-up.sh" ] && \
+            install -m 0755 "${SRC_DIR}/packaging/csqtt-network-up.sh" /usr/local/lib/csqtt/network-up.sh
+        log_info "csqtt.service не переписываю"
+    fi
+    systemctl restart csqtt
+    sleep 1
+    systemctl is-active --quiet csqtt && log_info "csqtt обновлён" || log_warn "csqtt не active — journalctl -u csqtt"
 }
 
 do_install() {
     mkdir -p "$(dirname "$LOG_FILE")"
     echo "=== installer v${SCRIPT_VERSION} $(date -Iseconds) ===" >>"$LOG_FILE"
-    echo "qWDTT panel installer v${SCRIPT_VERSION}"
+    echo "qWDTT + CSQTT installer v${SCRIPT_VERSION}"
     os_packages
     install_go
     fetch_sources
@@ -205,39 +407,50 @@ do_install() {
     seed_secrets
     echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
     write_unit
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
-        ufw allow 56000/udp >/dev/null 2>&1 || true
-        ufw allow 56002/udp >/dev/null 2>&1 || true
-        ufw allow 56003/udp >/dev/null 2>&1 || true
-        ufw allow "${WEB_PORT}/tcp" >/dev/null 2>&1 || true
-    fi
+    open_firewall
     systemctl restart wdtt
     sleep 2
     if ! systemctl is-active --quiet wdtt; then
-        log_error "сервис не запустился"
+        log_error "wdtt не запустился"
         journalctl -u wdtt -n 40 --no-pager | tee -a "$LOG_FILE" || true
         exit 1
     fi
+    install_csqtt_stack
+    write_credentials
     echo
-    echo "Панель:   https://$(public_ip):${WEB_PORT}"
-    echo "Логин:    ${WEB_USER}"
-    echo "Пароль:   ${WEB_PASS}"
-    echo "VPN pass: ${OWNER_PASS}"
-    echo "Учётка:   ${CRED_FILE}"
+    echo "qWDTT панель: https://$(public_ip):${WEB_PORT}"
+    echo "  логин:  ${WEB_USER}"
+    echo "  пароль: ${WEB_PASS}"
+    echo "  VPN:    ${OWNER_PASS}"
+    echo "CSQTT:        peer UDP ${CSQTT_PEER_PORT}, web ${CSQTT_WEB_PORT} (API для вкладки панели)"
+    echo "  web user: ${CSQTT_WEB_USER}"
+    echo "  web pass: ${CSQTT_WEB_PASS}"
+    echo "Учётки:       ${CRED_FILE}"
 }
 
 do_update() {
     mkdir -p "$(dirname "$LOG_FILE")"
-    echo "qWDTT panel installer v${SCRIPT_VERSION}"
+    echo "qWDTT + CSQTT installer v${SCRIPT_VERSION}"
     export PATH="/usr/local/go/bin:${PATH}"
     install_go
     fetch_sources
     build_server
     mkdir -p /usr/local/lib/qwdtt
     [ -f "${SRC_DIR}/server/update-server.sh" ] && install -m 0755 "${SRC_DIR}/server/update-server.sh" /usr/local/lib/qwdtt/update-server.sh
-    log_info "systemd unit не трогаю"
+    log_info "wdtt.service не трогаю"
     systemctl restart wdtt
-    log_info "обновлено"
+    if [ -s "${CONFIG_DIR}/web.password" ]; then
+        WEB_PASS="$(tr -d '\r\n' < "${CONFIG_DIR}/web.password")"
+    fi
+    update_csqtt_stack
+    if [ -s "$CSQTT_ENV_FILE" ]; then
+        CSQTT_WEB_PASS="$(grep -E '^CSQTT_WEB_PASS=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+        CSQTT_WEB_USER="$(grep -E '^CSQTT_WEB_USER=' "$CSQTT_ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+    fi
+    [ -n "${OWNER_PASS:-}" ] || OWNER_PASS="$(tr -d '\r\n' < "${CONFIG_DIR}/main.password" 2>/dev/null || true)"
+    [ -n "${WEB_PASS:-}" ] || WEB_PASS="$(tr -d '\r\n' < "${CONFIG_DIR}/web.password" 2>/dev/null || true)"
+    write_credentials
+    log_info "обновлено (wdtt + csqtt)"
 }
 
 main() {
@@ -248,7 +461,9 @@ main() {
         write-unit|--write-unit)
             [ -d "$SRC_DIR" ] || fetch_sources
             write_unit
+            write_csqtt_unit
             systemctl restart wdtt
+            systemctl restart csqtt 2>/dev/null || true
             ;;
         *) die "команды: install | update | write-unit" ;;
     esac
