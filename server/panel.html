@@ -564,25 +564,27 @@ let clientKind = 'qwdtt';
 let nav = 'monitoring';
 
 function applyTheme(theme){
-  if (theme === 'light') document.documentElement.setAttribute('data-theme','light');
+  // CSS dark tokens live on html[data-theme="dark"]; light = no attribute
+  if (theme === 'dark') document.documentElement.setAttribute('data-theme','dark');
   else document.documentElement.removeAttribute('data-theme');
-  try { localStorage.setItem('qwdtt-theme', theme === 'light' ? 'light' : 'dark'); } catch (e) {}
+  try { localStorage.setItem('qwdtt-theme', theme === 'dark' ? 'dark' : 'light'); } catch (e) {}
   const btn = document.getElementById('theme-btn');
   const icon = document.getElementById('theme-icon');
-  if (btn) btn.title = theme === 'light' ? 'Тёмная тема' : 'Светлая тема';
+  if (btn) btn.title = theme === 'dark' ? 'Светлая тема' : 'Тёмная тема';
   if (icon) {
-    icon.innerHTML = theme === 'light'
-      ? '<path d="M12 3a9 9 0 1 0 9 9 9 9 0 0 0-9-9zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14z"/>'
+    icon.innerHTML = theme === 'dark'
+      ? '<path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 0 0-1.41 0 .996.996 0 0 0 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 0 0-1.41 0 .996.996 0 0 0 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 0 0 0-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 0 0 0-1.41.996.996 0 0 0-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 0 0 0-1.41.996.996 0 0 0-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/>'
       : '<path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/>';
   }
 }
 function toggleTheme(){
-  const light = document.documentElement.getAttribute('data-theme') === 'light';
-  applyTheme(light ? 'dark' : 'light');
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  applyTheme(dark ? 'light' : 'dark');
 }
 try {
   const saved = localStorage.getItem('qwdtt-theme');
-  if (saved === 'light') applyTheme('light');
+  if (saved === 'dark') applyTheme('dark');
+  else applyTheme('light');
 } catch (e) {}
 
 async function api(path, opt){
@@ -970,60 +972,111 @@ async function upd(target){
     alert(ex.message || ex);
   }
 }
-async function loadServices(){
+function svcStatusEl(target){
+  return document.getElementById('svc-'+target);
+}
+function paintServices(d){
   const map = {
     qwdtt: document.getElementById('svc-qwdtt'),
     csqtt: document.getElementById('svc-csqtt'),
     panel: document.getElementById('svc-panel')
   };
   const detail = document.getElementById('svc-qwdtt-detail');
+  const paint = (key, el, extra) => {
+    if (!el) return;
+    const s = d[key] || {};
+    const ok = !!s.active;
+    el.className = 'status ' + (ok ? 'on' : 'bad');
+    let t = ok ? 'работает ('+ (s.state||'active') +')' : 'не работает ('+ (s.state||'inactive') +')';
+    if (extra) t += extra;
+    el.textContent = t;
+  };
+  paint('qwdtt', map.qwdtt, d.qwdtt && d.qwdtt.admin_ok ? ' · admin API OK' : (d.qwdtt && d.qwdtt.active ? ' · admin API нет' : ''));
+  paint('csqtt', map.csqtt, d.csqtt && d.csqtt.api_ok ? ' · API OK' : (d.csqtt && d.csqtt.active ? ' · API нет' : ''));
+  paint('panel', map.panel, '');
+  if (detail) {
+    const s = d.qwdtt || {};
+    detail.className = 'status ' + (s.active ? 'on' : 'bad');
+    detail.textContent = s.active
+      ? ('wdtt.service активен' + (s.admin_ok ? ', admin API отвечает' : ', admin API недоступен'))
+      : ('wdtt.service: ' + (s.state || 'inactive'));
+  }
+}
+async function loadServices(){
   try {
     const d = await api('/api/services');
-    const paint = (key, el, extra) => {
-      if (!el) return;
-      const s = d[key] || {};
-      const ok = !!s.active;
-      el.className = 'status ' + (ok ? 'on' : 'bad');
-      let t = ok ? 'работает ('+ (s.state||'active') +')' : 'не работает ('+ (s.state||'inactive') +')';
-      if (extra) t += extra;
-      el.textContent = t;
-    };
-    paint('qwdtt', map.qwdtt, d.qwdtt && d.qwdtt.admin_ok ? ' · admin API OK' : (d.qwdtt && d.qwdtt.active ? ' · admin API нет' : ''));
-    paint('csqtt', map.csqtt, d.csqtt && d.csqtt.api_ok ? ' · API OK' : (d.csqtt && d.csqtt.active ? ' · API нет' : ''));
-    paint('panel', map.panel, '');
-    if (detail) {
-      const s = d.qwdtt || {};
-      detail.className = 'status ' + (s.active ? 'on' : 'bad');
-      detail.textContent = s.active
-        ? ('wdtt.service активен' + (s.admin_ok ? ', admin API отвечает' : ', admin API недоступен'))
-        : ('wdtt.service: ' + (s.state || 'inactive'));
-    }
+    paintServices(d);
+    return d;
   } catch (ex) {
-    Object.values(map).forEach(el => {
+    ['svc-qwdtt','svc-csqtt','svc-panel'].forEach(id => {
+      const el = document.getElementById(id);
       if (!el) return;
       el.className = 'status bad';
       el.textContent = ex.message || ex;
     });
+    return null;
   }
+}
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+async function waitServicesReady(target, attempts){
+  attempts = attempts || 8;
+  for (let i = 0; i < attempts; i++) {
+    await sleep(700);
+    try {
+      const d = await api('/api/services');
+      paintServices(d);
+      const s = d && d[target];
+      if (s && s.active) {
+        if (target === 'qwdtt' && !s.admin_ok && i < attempts - 1) continue;
+        if (target === 'csqtt' && !s.api_ok && i < attempts - 1) continue;
+        return d;
+      }
+    } catch (e) {
+      const el = svcStatusEl(target);
+      if (el) { el.className = 'status off'; el.textContent = 'ожидание после перезапуска…'; }
+    }
+  }
+  return loadServices();
 }
 async function restartSvc(target){
   const labels = {qwdtt:'qWDTT (wdtt)', csqtt:'CSQTT', panel:'панель'};
   const label = labels[target] || target;
   if (!confirm('Перезапустить '+label+'?')) return;
   const st = document.getElementById('svc-action');
-  if (st) { st.className = 'status on'; st.textContent = 'Перезапускаю '+label+'…'; }
+  const el = svcStatusEl(target);
+  if (st) { st.className = 'status off'; st.textContent = 'Перезапускаю '+label+'…'; }
+  if (el) { el.className = 'status off'; el.textContent = 'перезапускается…'; }
   try {
-    await api('/api/restart', {
+    const res = await api('/api/restart', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body: new URLSearchParams({target})
     });
-    if (st) st.textContent = label + ' перезапущен';
-    await loadServices();
+    if (res && res.services) paintServices(res.services);
+    if (el) { el.className = 'status off'; el.textContent = 'перезапускается… проверяю…'; }
+    await waitServicesReady(target);
+    if (st) { st.className = 'status on'; st.textContent = label + ' перезапущен'; }
+    if (el) {
+      const cur = el.textContent || '';
+      if (!cur.includes('перезапущен')) {
+        el.textContent = (cur ? cur + ' · ' : '') + 'перезапущен';
+      }
+    }
     if (target === 'csqtt') await loadCsqttSettings();
     await refresh().catch(()=>{});
   } catch (ex) {
+    // restart panel kills the process — request may fail; poll until back
+    if (target === 'panel') {
+      if (el) { el.className = 'status off'; el.textContent = 'перезапускается…'; }
+      if (st) { st.className = 'status off'; st.textContent = 'Жду панель после рестарта…'; }
+      await waitServicesReady('panel', 12);
+      if (st) { st.className = 'status on'; st.textContent = 'панель перезапущена'; }
+      await refresh().catch(()=>{});
+      return;
+    }
     if (st) { st.className = 'status bad'; st.textContent = ex.message || ex; }
+    if (el) { el.className = 'status bad'; el.textContent = ex.message || ex; }
+    await loadServices();
     alert(ex.message || ex);
   }
 }

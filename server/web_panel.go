@@ -1016,7 +1016,12 @@ func handlePanelRestart(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusBadGateway, msg)
 		return
 	}
-	time.Sleep(400 * time.Millisecond)
+	// Invalidate CSQTT status cache so Settings refresh is not stale.
+	csqttStatMu.Lock()
+	csqttStatVal = nil
+	csqttStatAt = time.Time{}
+	csqttStatMu.Unlock()
+	time.Sleep(1200 * time.Millisecond)
 	snap := panelServiceSnapshot()
 	writePanelJSON(w, map[string]interface{}{
 		"ok":       true,
