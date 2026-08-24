@@ -604,5 +604,8 @@ func handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 		"down_bytes": atomic.LoadInt64(&totalBytesToClient),
 		"nat":        natType,
 		"uptime":     formatUptime(up),
+		"version":    panelDisplayVersion(),
+		"tun":        qwdttTunCIDR,
+		"iface":      wgIfaceName,
 	})
 }

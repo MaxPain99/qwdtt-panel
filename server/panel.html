@@ -450,6 +450,7 @@ pre{
             <div>
               <div class="svc-name">Панель <span class="svc-unit">qwdtt-panel.service</span></div>
               <p id="svc-panel" class="status off">…</p>
+              <p class="hint" style="margin:4px 0 0">Версия: <b id="ver-panel">…</b></p>
             </div>
             <button class="btn btn-tonal btn-sm" type="button" onclick="restartSvc('panel')">Перезапустить</button>
           </div>
@@ -478,15 +479,20 @@ pre{
       <div id="settings-qwdtt" class="panel">
         <h3>qWDTT</h3>
         <p id="svc-qwdtt-detail" class="status off"></p>
-        <p class="hint">VPN и admin API — <b>wdtt</b> (TUN <b>10.66.66.0/24</b>).</p>
+        <p class="hint">Версия: <b id="ver-qwdtt">…</b></p>
+        <p class="hint">TUN: <b id="tun-qwdtt">10.66.66.0/24</b> · iface <b id="iface-qwdtt">wdtt0</b></p>
+        <p class="hint">VPN и admin API — сервис <b>wdtt</b>.</p>
+        <div class="row">
+          <button class="btn btn-tonal btn-sm" type="button" onclick="loadServices()">Обновить</button>
+        </div>
       </div>
 
       <div id="settings-csqtt" class="panel" hidden>
         <h3>CSQTT</h3>
         <p id="csqtt-settings-status" class="status off"></p>
-        <p class="hint">DNS и главный пароль — панель <b>:46002</b>.</p>
+        <p class="hint">Версия: <b id="ver-csqtt">…</b></p>
+        <p class="hint">TUN: <b id="tun-csqtt">10.66.67.0/24</b> · iface <b id="iface-csqtt">csqtt1</b></p>
         <div class="row">
-          <a class="btn btn-ghost btn-sm" id="csqtt-native-link" href="#" target="_blank" rel="noopener">Открыть CSQTT</a>
           <button class="btn btn-tonal btn-sm" type="button" onclick="loadCsqttSettings()">Обновить</button>
         </div>
       </div>
@@ -829,18 +835,18 @@ function copyCsqtt(i, key, btn){
 }
 async function loadCsqttSettings(){
   const st = document.getElementById('csqtt-settings-status');
-  const link = document.getElementById('csqtt-native-link');
-  link.href = location.protocol + '//' + location.hostname + ':46002';
   try {
     const d = await api('/api/csqtt');
     const svc = await api('/api/services').catch(()=>null);
+    if (svc) paintServices(svc);
     const unitOk = svc && svc.csqtt && svc.csqtt.active;
+    const ifaceUp = svc && svc.csqtt && svc.csqtt.iface_up;
     if (d.connected || unitOk) {
       st.className = 'status on';
       const bits = [];
       if (unitOk) bits.push('csqtt.service активен');
       else bits.push('unit не active');
-      if (d.connected) bits.push(d.iface_up ? 'API · csqtt1' : 'API OK');
+      if (d.connected) bits.push(ifaceUp || d.iface_up ? 'API · csqtt1' : 'API OK');
       else bits.push('API нет связи');
       st.textContent = bits.join(' · ');
     } else {
@@ -994,11 +1000,20 @@ function paintServices(d){
   paint('qwdtt', map.qwdtt, d.qwdtt && d.qwdtt.admin_ok ? ' · admin API OK' : (d.qwdtt && d.qwdtt.active ? ' · admin API нет' : ''));
   paint('csqtt', map.csqtt, d.csqtt && d.csqtt.api_ok ? ' · API OK' : (d.csqtt && d.csqtt.active ? ' · API нет' : ''));
   paint('panel', map.panel, '');
+  const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v || '—'; };
+  setTxt('ver-qwdtt', d.qwdtt && d.qwdtt.version);
+  setTxt('tun-qwdtt', (d.qwdtt && d.qwdtt.tun) || '10.66.66.0/24');
+  setTxt('iface-qwdtt', (d.qwdtt && d.qwdtt.iface) || 'wdtt0');
+  setTxt('ver-csqtt', d.csqtt && d.csqtt.version);
+  setTxt('tun-csqtt', (d.csqtt && d.csqtt.tun) || '10.66.67.0/24');
+  setTxt('iface-csqtt', (d.csqtt && d.csqtt.iface) || 'csqtt1');
+  setTxt('ver-panel', d.panel && d.panel.version);
   if (detail) {
     const s = d.qwdtt || {};
     detail.className = 'status ' + (s.active ? 'on' : 'bad');
+    const ifaceBit = s.iface_up ? (s.iface || 'wdtt0') + ' up' : (s.iface || 'wdtt0') + ' down';
     detail.textContent = s.active
-      ? ('wdtt.service активен' + (s.admin_ok ? ', admin API отвечает' : ', admin API недоступен'))
+      ? ('wdtt.service активен · ' + ifaceBit + (s.admin_ok ? ' · admin API OK' : ' · admin API нет'))
       : ('wdtt.service: ' + (s.state || 'inactive'));
   }
 }

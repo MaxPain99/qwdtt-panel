@@ -941,14 +941,30 @@ func panelServiceSnapshot() map[string]interface{} {
 	csqttOK, csqttState := panelUnitActive("csqtt")
 	panelOK, panelState := panelUnitActive("qwdtt-panel")
 	csqttAPI := false
+	csqttVer := ""
 	if st := csqttCachedStatus(); st != nil {
 		if v, ok := st["connected"].(bool); ok {
 			csqttAPI = v
 		}
+		if stats, ok := st["stats"].(map[string]interface{}); ok {
+			csqttVer = csqttVersionFromAPI(stats)
+		}
+	}
+	if csqttVer == "" {
+		csqttVer = detectBinaryVersion(envOr(os.Getenv("CSQTT_BIN_PATH"), csqttDefaultBin))
 	}
 	adminOK := false
+	qwdttVer := ""
 	if panelWdttAdminEnabled() {
-		adminOK = panelAdminStatus() != nil
+		if st := panelAdminStatus(); st != nil {
+			adminOK = true
+			if v, ok := st["version"].(string); ok {
+				qwdttVer = strings.TrimSpace(v)
+			}
+		}
+	}
+	if qwdttVer == "" {
+		qwdttVer = detectBinaryVersion(envOr(os.Getenv("QWDTT_BIN"), wdttDefaultBin))
 	}
 	return map[string]interface{}{
 		"qwdtt": map[string]interface{}{
@@ -956,17 +972,26 @@ func panelServiceSnapshot() map[string]interface{} {
 			"active":   wdttOK,
 			"state":    wdttState,
 			"admin_ok": adminOK,
+			"version":  qwdttVer,
+			"tun":      qwdttTunCIDR,
+			"iface":    wgIfaceName,
+			"iface_up": ifaceUp(wgIfaceName),
 		},
 		"csqtt": map[string]interface{}{
-			"unit":   "csqtt",
-			"active": csqttOK,
-			"state":  csqttState,
-			"api_ok": csqttAPI,
+			"unit":     "csqtt",
+			"active":   csqttOK,
+			"state":    csqttState,
+			"api_ok":   csqttAPI,
+			"version":  csqttVer,
+			"tun":      csqttTunCIDR,
+			"iface":    csqttTunIface,
+			"iface_up": ifaceUp(csqttTunIface),
 		},
 		"panel": map[string]interface{}{
-			"unit":   "qwdtt-panel",
-			"active": panelOK,
-			"state":  panelState,
+			"unit":    "qwdtt-panel",
+			"active":  panelOK,
+			"state":   panelState,
+			"version": panelDisplayVersion(),
 		},
 	}
 }
@@ -1021,6 +1046,7 @@ func handlePanelRestart(w http.ResponseWriter, r *http.Request) {
 	csqttStatVal = nil
 	csqttStatAt = time.Time{}
 	csqttStatMu.Unlock()
+	invalidateBinaryVersionCache()
 	time.Sleep(1200 * time.Millisecond)
 	snap := panelServiceSnapshot()
 	writePanelJSON(w, map[string]interface{}{

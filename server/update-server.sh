@@ -47,6 +47,14 @@ refresh_helper() {
   fi
 }
 
+go_ldflags() {
+  local ver commit ts
+  ver="$(git -C "$SRC_DIR" describe --tags --always --dirty 2>/dev/null || echo dev)"
+  commit="$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf -- "-s -w -X main.BuildVersion=%s -X main.BuildCommit=%s -X main.BuildTime=%s" "$ver" "$commit" "$ts"
+}
+
 ensure_panel_repo() {
   if [ -d "${SRC_DIR}/.git" ]; then
     git -C "$SRC_DIR" remote set-url origin "$REPO_URL" || true
@@ -74,9 +82,11 @@ restore_units() {
 update_qwdtt_source() {
   command -v go >/dev/null 2>&1 || { echo "go не найден"; exit 1; }
   ensure_panel_repo
+  local ld
+  ld="$(go_ldflags)"
   (
     cd "$SRC_DIR"
-    go build -trimpath -ldflags '-s -w' -o /tmp/wdtt-server ./server
+    go build -trimpath -ldflags "$ld" -o /tmp/wdtt-server ./server
   )
   install -m 0755 /tmp/wdtt-server "$BIN_PATH"
   rm -f /tmp/wdtt-server
@@ -92,9 +102,11 @@ update_qwdtt_source() {
 update_panel_source() {
   command -v go >/dev/null 2>&1 || { echo "go не найден"; exit 1; }
   ensure_panel_repo
+  local ld
+  ld="$(go_ldflags)"
   (
     cd "$SRC_DIR"
-    go build -tags qwdtt_panel -trimpath -ldflags '-s -w' -o /tmp/qwdtt-panel ./server
+    go build -tags qwdtt_panel -trimpath -ldflags "$ld" -o /tmp/qwdtt-panel ./server
   )
   install -m 0755 /tmp/qwdtt-panel "$PANEL_BIN_PATH"
   rm -f /tmp/qwdtt-panel
