@@ -6,60 +6,77 @@
 <title>qWDTT / CSQTT</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&display=swap" rel="stylesheet">
 <style>
+:root{
+  --md-primary:#1565c0;--md-on-primary:#fff;
+  --md-surface:#f8f9ff;--md-surface-container:#edeef4;
+  --md-on-surface:#1a1c20;--md-on-surface-variant:#44474e;
+  --md-outline:#74777f;--md-error:#ba1a1a;
+  --md-elevation-2:0 1px 2px rgba(0,0,0,.14),0 2px 6px 2px rgba(0,0,0,.08);
+}
+html[data-theme="dark"]{
+  --md-primary:#a8c8ff;--md-on-primary:#063066;
+  --md-surface:#111318;--md-surface-container:#1e1f25;
+  --md-on-surface:#e2e2e6;--md-on-surface-variant:#c4c6cf;
+  --md-outline:#8e9099;--md-error:#ffb4ab;
+}
 *{box-sizing:border-box}
 body{
   margin:0;min-height:100vh;display:flex;flex-direction:column;
-  font:16px/1.45 Manrope,system-ui,sans-serif;color:#eef3fb;
-  background:
-    radial-gradient(800px 420px at 10% -5%, rgba(26,140,255,.2), transparent 55%),
-    linear-gradient(180deg,#0b0f17,#090d14);
+  font:14px/1.5 "Roboto Flex",Roboto,system-ui,sans-serif;
+  color:var(--md-on-surface);background:var(--md-surface);
 }
-.top{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:14px 22px;background:#f4f6f9;border-bottom:1px solid rgba(18,24,38,.06);
+.app-bar{
+  height:64px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;background:var(--md-surface-container);
+  box-shadow:0 1px 2px rgba(0,0,0,.12);
 }
-.brand{font-weight:800;font-size:1.25rem;letter-spacing:.04em;text-transform:uppercase;color:#1a8cff}
-.credit{font-weight:600;font-size:.86rem;color:#1a8cff}
-.wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:28px 16px}
-form{
-  width:min(400px,100%);padding:32px 28px;border-radius:22px;
-  background:#151c2b;border:1px solid rgba(255,255,255,.08);
-  box-shadow:0 24px 60px rgba(0,0,0,.35);
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:1.1rem}
+.logo{
+  width:40px;height:40px;border-radius:12px;background:#d3e3fd;color:#041e49;
+  display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;
 }
-h1{margin:0 0 6px;font-size:1.5rem;font-weight:800;text-align:center}
-p{margin:0 0 22px;color:#8d9bb3;text-align:center;font-size:.92rem}
-label{display:block;margin:0 0 6px;font-size:.7rem;font-weight:700;color:#8d9bb3;letter-spacing:.05em;text-transform:uppercase}
+html[data-theme="dark"] .logo{background:#004786;color:#d3e3fd}
+.sub{color:var(--md-on-surface-variant);font-size:.82rem;font-weight:500}
+.wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.card{
+  width:min(400px,100%);padding:32px 28px;border-radius:28px;
+  background:var(--md-surface-container);box-shadow:var(--md-elevation-2);
+}
+h1{margin:0 0 6px;font-size:1.5rem;font-weight:700;text-align:center}
+p{margin:0 0 24px;color:var(--md-on-surface-variant);text-align:center}
+label{display:block;margin:0 0 6px;font-size:.75rem;font-weight:500;color:var(--md-on-surface-variant)}
 input{
-  width:100%;height:46px;margin:0 0 14px;padding:0 14px;border-radius:12px;
-  border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.25);color:#eef3fb;outline:none;
+  width:100%;height:56px;margin:0 0 12px;padding:0 16px;border-radius:12px;
+  border:1px solid var(--md-outline);background:var(--md-surface);color:var(--md-on-surface);outline:none;
 }
-input:focus{border-color:#1a8cff;box-shadow:0 0 0 3px rgba(26,140,255,.16)}
+input:focus{border:2px solid var(--md-primary);padding:0 15px}
 button{
-  width:100%;height:46px;margin-top:6px;border:0;border-radius:12px;cursor:pointer;
-  font-weight:800;color:#fff;background:#1a8cff;box-shadow:0 10px 24px rgba(26,140,255,.28);
+  width:100%;height:48px;margin-top:8px;border:0;border-radius:24px;cursor:pointer;
+  font-weight:500;color:var(--md-on-primary);background:var(--md-primary);
+  box-shadow:var(--md-elevation-2);
 }
 button:hover{filter:brightness(1.05)}
-.err{color:#ff6b7a;min-height:1.2em;margin-top:12px;text-align:center;font-size:.9rem}
+.err{color:var(--md-error);min-height:1.2em;margin-top:12px;text-align:center}
 </style>
 </head>
 <body>
-<div class="top">
-  <div class="brand">qWDTT / CSQTT</div>
-  <span class="credit">panel by MaxPain99</span>
-</div>
+<header class="app-bar">
+  <div class="brand"><div class="logo">QC</div><div>qWDTT / CSQTT</div></div>
+  <span class="sub">panel by MaxPain99</span>
+</header>
 <div class="wrap">
-<form method="post" action="/login">
-  <h1>Вход</h1>
-  <p>Панель управления qWDTT / CSQTT</p>
-  <label>Логин</label>
-  <input name="user" autocomplete="username" required>
-  <label>Пароль</label>
-  <input name="pass" type="password" autocomplete="current-password" required>
-  <div class="err" id="e"></div>
-  <button type="submit">Войти</button>
-</form>
+  <form class="card" method="post" action="/login">
+    <h1>Вход</h1>
+    <p>Панель управления qWDTT / CSQTT</p>
+    <label>Логин</label>
+    <input name="user" autocomplete="username" required>
+    <label>Пароль</label>
+    <input name="pass" type="password" autocomplete="current-password" required>
+    <div class="err" id="e"></div>
+    <button type="submit">Войти</button>
+  </form>
 </div>
 <script>
 if (location.search.indexOf('bad')>=0) document.getElementById('e').textContent='Неверный логин или пароль';
