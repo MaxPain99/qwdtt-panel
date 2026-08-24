@@ -382,6 +382,8 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 	wdttUp := atomic.LoadInt64(&totalBytesFromClient)
 	wdttDown := atomic.LoadInt64(&totalBytesToClient)
 	nat := natType
+	wdttOK, wdttState := panelUnitActive("wdtt")
+	wdttAdminOK := false
 	if panelWdttAdminEnabled() {
 		if st := panelAdminStatus(); st != nil {
 			wdttActive = csqttStatNumber(st, "active")
@@ -394,6 +396,7 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 			if s, ok := st["uptime"].(string); ok && s != "" {
 				upStr = s
 			}
+			wdttAdminOK = true
 		}
 	}
 	writePanelJSON(w, map[string]interface{}{
@@ -407,6 +410,9 @@ func handlePanelStatus(w http.ResponseWriter, r *http.Request) {
 		"wdtt_down":      wdttDown,
 		"uptime":         upStr,
 		"nat":            nat,
+		"wdtt_ok":        wdttOK,
+		"wdtt_state":     wdttState,
+		"wdtt_admin_ok":  wdttAdminOK,
 		"logs_active":    panelLogsEnabled(),
 		"socks_on":       socksOn,
 		"socks_tcp":      socksTCP,

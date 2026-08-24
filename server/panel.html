@@ -147,7 +147,13 @@ a{color:var(--md-primary);text-decoration:none}
   font-size:.72rem;font-weight:500;letter-spacing:.04em;text-transform:uppercase;
   color:var(--md-on-surface-variant);
 }
-.stat .v{font-size:1.05rem;font-weight:700;word-break:break-word;color:var(--md-on-surface)}
+.stat .v{font-size:1.05rem;font-weight:700;word-break:break-word;color:var(--md-on-surface);display:flex;align-items:center;gap:8px}
+.stat .ok-dot,.stat .bad-dot{
+  width:18px;height:18px;border-radius:4px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;
+}
+.stat .ok-dot{background:var(--md-success);color:var(--md-on-success)}
+.stat .bad-dot{background:var(--md-error);color:var(--md-on-error)}
+.stat .ok-dot svg,.stat .bad-dot svg{width:12px;height:12px}
 
 .toolbar{
   display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
@@ -683,17 +689,28 @@ async function refresh(){
     const s = await api('/api/status');
     const actHint = (Number(s.wdtt_active)||0) || (Number(s.csqtt_active)||0)
       ? ` · q${s.wdtt_active||0}/c${s.csqtt_active||0}` : '';
+    let wdttStatus = 'не работает';
+    if (s.wdtt_ok) {
+      wdttStatus = 'работает';
+      if (s.wdtt_state && s.wdtt_state !== 'active') wdttStatus += ' ('+s.wdtt_state+')';
+      else if (s.wdtt_admin_ok) wdttStatus += ' · API OK';
+    } else if (s.wdtt_state) {
+      wdttStatus = 'не работает ('+s.wdtt_state+')';
+    }
+    const wdttMark = s.wdtt_ok
+      ? '<span class="ok-dot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>'
+      : '<span class="bad-dot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>';
     document.getElementById('stats').innerHTML = [
       ['Активные', (s.active||0) + actHint],
       ['Всего сессий', s.total],
       ['Аплинк', fmt(s.up_bytes)],
       ['Даунлинк', fmt(s.down_bytes)],
       ['Uptime', s.uptime || '—'],
-      ['NAT', s.nat || '—'],
+      ['qWDTT', wdttMark + esc(wdttStatus)],
       ['SOCKS5 UDP', s.socks_on ? ('TCP '+(s.socks_tcp||0)+' · UDP '+(s.socks_udp||0)+(s.socks_ifaces&&s.socks_ifaces.length?' · '+s.socks_ifaces.join(', '):'')) : 'выкл'],
       ['CSQTT', s.csqtt_ok ? ('вкл '+(s.csqtt_active||0)+(s.csqtt_iface_up?' · csqtt1':'')) : (s.csqtt_error ? 'нет связи' : '—')],
       ['Логи', s.logs_active ? 'вкл' : 'выкл'],
-    ].map(([k,v])=>`<div class="stat"><span class="k">${esc(k)}</span><div class="v">${esc(String(v??''))}</div></div>`).join('');
+    ].map(([k,v])=>`<div class="stat"><span class="k">${esc(k)}</span><div class="v">${k==='qWDTT'?v:esc(String(v??''))}</div></div>`).join('');
   } catch (ex) {
     document.getElementById('stats').innerHTML = `<div class="stat"><span class="k">Ошибка</span><div class="v">${esc(ex.message||ex)}</div></div>`;
   }
