@@ -573,14 +573,6 @@ pre{
             <button class="btn btn-ghost btn-sm" type="button" onclick="clearTLSPaths()">Сбросить на локальный</button>
           </div>
         </form>
-        <details style="margin-top:16px">
-          <summary class="hint" style="cursor:pointer">Вставить PEM вручную</summary>
-          <form id="tls-upload-form" onsubmit="return uploadTLS(event)" style="margin-top:12px">
-            <div class="field"><label>Cert (PEM)</label><textarea name="cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
-            <div class="field"><label>Key (PEM)</label><textarea name="key" rows="4" placeholder="-----BEGIN EC PRIVATE KEY-----"></textarea></div>
-            <button class="btn btn-sm" type="submit">Загрузить свой сертификат</button>
-          </form>
-        </details>
         <form id="tls-le-form" style="margin-top:12px" onsubmit="return letsencryptTLS(event)">
           <div class="form-row">
             <div class="field"><label>Домен</label><input name="domain" placeholder="panel.example.com" required></div>
