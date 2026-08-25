@@ -841,9 +841,7 @@ func handlePanelTLSRenew(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusBadRequest, "certbot не установлен")
 		return
 	}
-	cmd := exec.Command("certbot", "renew", "--quiet", "--deploy-hook",
-		fmt.Sprintf("cp /etc/letsencrypt/live/*/fullchain.pem %s && cp /etc/letsencrypt/live/*/privkey.pem %s",
-			filepath.Join(panelDir, panelCertFile), filepath.Join(panelDir, panelKeyFile)))
+	cmd := exec.Command("certbot", "renew", "--quiet")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -852,7 +850,11 @@ func handlePanelTLSRenew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	panelAudit("tls_renew", "certbot renew")
-	writePanelJSON(w, map[string]interface{}{"ok": true, "message": "renew OK — перезапустите панель"})
+	writePanelJSON(w, map[string]interface{}{
+		"ok":      true,
+		"message": "renew OK — при путях на live-файлы сертификат подхватится сам",
+		"cert":    panelCertInfo(),
+	})
 }
 
 func parseImportCSVReader(r io.Reader) ([]importClientRow, error) {

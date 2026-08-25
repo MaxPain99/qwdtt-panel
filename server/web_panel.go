@@ -63,8 +63,10 @@ type panelFileStore struct {
 	ActiveSocksID string         `json:"active_socks_id,omitempty"`
 	CsqttURL      string                `json:"csqtt_url,omitempty"`
 	CsqttUser     string                `json:"csqtt_user,omitempty"`
-	CsqttPass     string                `json:"csqtt_pass,omitempty"`
+	CsqttPass     string            `json:"csqtt_pass,omitempty"`
 	Notify        panelNotifyConfig `json:"notify,omitempty"`
+	TLSCertFile   string            `json:"tls_cert_file,omitempty"`
+	TLSKeyFile    string            `json:"tls_key_file,omitempty"`
 }
 
 var (
@@ -130,11 +132,20 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	panelApplyCsqttSettings()
 	startPanelBackgroundTasks()
 
-	certPath := filepath.Join(configDir, panelCertFile)
-	keyPath := filepath.Join(configDir, panelKeyFile)
-	if err := ensurePanelTLS(certPath, keyPath); err != nil {
-		log.Printf("[WEB] TLS: %v", err)
-		return
+	certPath, keyPath := resolvePanelTLSPaths()
+	if isDefaultPanelTLS(certPath, keyPath) {
+		if err := ensurePanelTLS(certPath, keyPath); err != nil {
+			log.Printf("[WEB] TLS: %v", err)
+			return
+		}
+	} else if _, err := tls.LoadX509KeyPair(certPath, keyPath); err != nil {
+		log.Printf("[WEB] TLS пути: %v — fallback на локальный сертификат", err)
+		certPath = filepath.Join(configDir, panelCertFile)
+		keyPath = filepath.Join(configDir, panelKeyFile)
+		if err := ensurePanelTLS(certPath, keyPath); err != nil {
+			log.Printf("[WEB] TLS: %v", err)
+			return
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -182,6 +193,7 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/update-server", handlePanelUpdate)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	tlsCert, tlsKey := certPath, keyPath
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           mux,
@@ -189,11 +201,26 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
-		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				c, k := resolvePanelTLSPaths()
+				if !isDefaultPanelTLS(c, k) {
+					if cert, err := tls.LoadX509KeyPair(c, k); err == nil {
+						return &cert, nil
+					}
+				}
+				cert, err := tls.LoadX509KeyPair(tlsCert, tlsKey)
+				if err != nil {
+					return nil, err
+				}
+				return &cert, nil
+			},
+		},
 	}
 	go func() {
-		log.Printf("[WEB] HTTPS панель https://0.0.0.0:%d логин %s", port, user)
-		if err := server.ListenAndServeTLS(certPath, keyPath); err != nil {
+		log.Printf("[WEB] HTTPS панель https://0.0.0.0:%d логин %s cert=%s", port, user, tlsCert)
+		if err := server.ListenAndServeTLS("", ""); err != nil {
 			log.Printf("[WEB] %v", err)
 		}
 	}()

@@ -563,17 +563,29 @@ pre{
       <div class="panel">
         <h3>TLS сертификат</h3>
         <p id="tls-info" class="hint">загрузка…</p>
-        <form id="tls-upload-form" onsubmit="return uploadTLS(event)">
-          <div class="field"><label>Cert (PEM)</label><textarea name="cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
-          <div class="field"><label>Key (PEM)</label><textarea name="key" rows="4" placeholder="-----BEGIN EC PRIVATE KEY-----"></textarea></div>
-          <button class="btn btn-sm" type="submit">Загрузить свой сертификат</button>
+        <form id="tls-paths-form" onsubmit="return saveTLSPaths(event)">
+          <p class="hint">Как в 3x-ui: укажите абсолютные пути к файлам на сервере (например Let's Encrypt live).</p>
+          <div class="field"><label>Certificate File Path</label><input name="cert_file" id="tls-cert-file" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem"></div>
+          <div class="field"><label>Key File Path</label><input name="key_file" id="tls-key-file" placeholder="/etc/letsencrypt/live/example.com/privkey.pem"></div>
+          <div class="row">
+            <button class="btn btn-sm" type="submit">Сохранить пути</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="clearTLSPaths()">Сбросить на локальный</button>
+          </div>
         </form>
+        <details style="margin-top:16px">
+          <summary class="hint" style="cursor:pointer">Вставить PEM вручную</summary>
+          <form id="tls-upload-form" onsubmit="return uploadTLS(event)" style="margin-top:12px">
+            <div class="field"><label>Cert (PEM)</label><textarea name="cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
+            <div class="field"><label>Key (PEM)</label><textarea name="key" rows="4" placeholder="-----BEGIN EC PRIVATE KEY-----"></textarea></div>
+            <button class="btn btn-sm" type="submit">Загрузить свой сертификат</button>
+          </form>
+        </details>
         <form id="tls-le-form" style="margin-top:12px" onsubmit="return letsencryptTLS(event)">
           <div class="form-row">
             <div class="field"><label>Домен</label><input name="domain" placeholder="panel.example.com" required></div>
             <div class="field"><label>Email</label><input name="email" type="email" placeholder="admin@example.com" required></div>
           </div>
-          <p class="hint">Let's Encrypt standalone — порт 80 должен быть свободен.</p>
+          <p class="hint">Let's Encrypt standalone — порт 80 должен быть свободен. После выпуска пути сохранятся автоматически.</p>
           <button class="btn btn-tonal btn-sm" type="submit">Let's Encrypt</button>
         </form>
         <div class="row" style="margin-top:8px">
@@ -1462,9 +1474,38 @@ async function loadTLS(){
   if (!el) return;
   try {
     const d = await api('/api/tls');
+    const certInp = document.getElementById('tls-cert-file');
+    const keyInp = document.getElementById('tls-key-file');
+    if (certInp) certInp.value = d.cert_file_setting || d.cert_file || '';
+    if (keyInp) keyInp.value = d.key_file_setting || d.key_file || '';
     if (d.error) { el.textContent = d.error; return; }
-    el.innerHTML = `<b>${esc(d.subject||'?')}</b> · issuer ${esc(d.issuer||'?')} · до ${esc(d.not_after||'?')} ${d.self_signed?'· self-signed':''}`;
+    const pathHint = d.cert_file ? ` · <code>${esc(d.cert_file)}</code>` : '';
+    el.innerHTML = `<b>${esc(d.subject||'?')}</b> · issuer ${esc(d.issuer||'?')} · до ${esc(d.not_after||'?')} ${d.self_signed?'· self-signed':''}${pathHint}`;
   } catch (ex) { el.textContent = ex.message || ex; }
+}
+async function saveTLSPaths(e){
+  e.preventDefault();
+  const err = document.getElementById('tls-err');
+  err.textContent = '';
+  try {
+    const f = new FormData(e.target);
+    const body = new URLSearchParams({action:'paths', cert_file:f.get('cert_file'), key_file:f.get('key_file')});
+    const d = await api('/api/tls', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+    notify(d.message || 'Пути сохранены', true);
+    await loadTLS();
+  } catch (ex) {
+    err.className = 'status bad';
+    err.textContent = ex.message || ex;
+  }
+  return false;
+}
+async function clearTLSPaths(){
+  if (!confirm('Вернуться к локальному panel.crt / panel.key?')) return;
+  try {
+    const d = await api('/api/tls', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'clear_paths'})});
+    notify(d.message || 'Сброшено', true);
+    await loadTLS();
+  } catch (ex) { notify(ex.message || ex, false); }
 }
 async function uploadTLS(e){
   e.preventDefault();

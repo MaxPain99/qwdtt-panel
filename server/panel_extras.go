@@ -158,8 +158,30 @@ func handlePanelChangePassword(w http.ResponseWriter, r *http.Request) {
 	writePanelJSON(w, map[string]bool{"ok": true})
 }
 
+func resolvePanelTLSPaths() (certPath, keyPath string) {
+	defCert := filepath.Join(panelDir, panelCertFile)
+	defKey := filepath.Join(panelDir, panelKeyFile)
+	panelStoreMu.Lock()
+	defer panelStoreMu.Unlock()
+	if panelStore == nil {
+		return defCert, defKey
+	}
+	c := strings.TrimSpace(panelStore.TLSCertFile)
+	k := strings.TrimSpace(panelStore.TLSKeyFile)
+	if c != "" && k != "" {
+		return c, k
+	}
+	return defCert, defKey
+}
+
+func isDefaultPanelTLS(certPath, keyPath string) bool {
+	defCert := filepath.Join(panelDir, panelCertFile)
+	defKey := filepath.Join(panelDir, panelKeyFile)
+	return filepath.Clean(certPath) == filepath.Clean(defCert) && filepath.Clean(keyPath) == filepath.Clean(defKey)
+}
+
 func panelCertInfo() map[string]interface{} {
-	certPath := filepath.Join(panelDir, panelCertFile)
+	certPath, _ := resolvePanelTLSPaths()
 	b, err := os.ReadFile(certPath)
 	if err != nil {
 		return map[string]interface{}{"error": "сертификат не найден"}
@@ -189,8 +211,18 @@ func handlePanelTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		certPath, keyPath := resolvePanelTLSPaths()
 		info := panelCertInfo()
-		info["path"] = filepath.Join(panelDir, panelCertFile)
+		info["path"] = certPath
+		info["cert_file"] = certPath
+		info["key_file"] = keyPath
+		info["custom_paths"] = !isDefaultPanelTLS(certPath, keyPath)
+		panelStoreMu.Lock()
+		if panelStore != nil {
+			info["cert_file_setting"] = panelStore.TLSCertFile
+			info["key_file_setting"] = panelStore.TLSKeyFile
+		}
+		panelStoreMu.Unlock()
 		writePanelJSON(w, info)
 	case http.MethodPost:
 		if err := parsePanelForm(r); err != nil {
@@ -203,12 +235,76 @@ func handlePanelTLS(w http.ResponseWriter, r *http.Request) {
 			panelTLSUpload(w, r)
 		case "letsencrypt":
 			panelTLSLetsencrypt(w, r)
+		case "paths":
+			panelTLSSetPaths(w, r)
+		case "clear_paths":
+			panelTLSClearPaths(w, r)
 		default:
-			writePanelError(w, http.StatusBadRequest, "action: upload | letsencrypt")
+			writePanelError(w, http.StatusBadRequest, "action: paths | upload | letsencrypt | clear_paths")
 		}
 	default:
 		writePanelError(w, http.StatusMethodNotAllowed, "method")
 	}
+}
+
+func panelTLSSetPaths(w http.ResponseWriter, r *http.Request) {
+	certFile := strings.TrimSpace(r.FormValue("cert_file"))
+	keyFile := strings.TrimSpace(r.FormValue("key_file"))
+	if certFile == "" || keyFile == "" {
+		writePanelError(w, http.StatusBadRequest, "укажите пути к cert и key")
+		return
+	}
+	if !filepath.IsAbs(certFile) || !filepath.IsAbs(keyFile) {
+		writePanelError(w, http.StatusBadRequest, "нужны абсолютные пути (например /etc/letsencrypt/live/.../fullchain.pem)")
+		return
+	}
+	certFile = filepath.Clean(certFile)
+	keyFile = filepath.Clean(keyFile)
+	if _, err := tls.LoadX509KeyPair(certFile, keyFile); err != nil {
+		writePanelError(w, http.StatusBadRequest, "не удалось прочитать пару: "+err.Error())
+		return
+	}
+	panelStoreMu.Lock()
+	if panelStore == nil {
+		panelStore = &panelFileStore{}
+	}
+	panelStore.TLSCertFile = certFile
+	panelStore.TLSKeyFile = keyFile
+	panelStoreMu.Unlock()
+	if err := persistPanelStore(); err != nil {
+		writePanelError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	panelAudit("tls_paths", certFile)
+	writePanelJSON(w, map[string]interface{}{
+		"ok":      true,
+		"message": "пути сохранены — сертификат подхватится сразу (без перезапуска)",
+		"cert":    panelCertInfo(),
+		"cert_file": certFile,
+		"key_file":  keyFile,
+	})
+}
+
+func panelTLSClearPaths(w http.ResponseWriter, r *http.Request) {
+	panelStoreMu.Lock()
+	if panelStore != nil {
+		panelStore.TLSCertFile = ""
+		panelStore.TLSKeyFile = ""
+	}
+	panelStoreMu.Unlock()
+	if err := persistPanelStore(); err != nil {
+		writePanelError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	certPath := filepath.Join(panelDir, panelCertFile)
+	keyPath := filepath.Join(panelDir, panelKeyFile)
+	_ = ensurePanelTLS(certPath, keyPath)
+	panelAudit("tls_paths", "cleared")
+	writePanelJSON(w, map[string]interface{}{
+		"ok":      true,
+		"message": "вернулись к локальному panel.crt / panel.key",
+		"cert":    panelCertInfo(),
+	})
 }
 
 func panelTLSUpload(w http.ResponseWriter, r *http.Request) {
@@ -235,9 +331,17 @@ func panelTLSUpload(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// после ручной загрузки PEM — используем локальные файлы
+	panelStoreMu.Lock()
+	if panelStore != nil {
+		panelStore.TLSCertFile = ""
+		panelStore.TLSKeyFile = ""
+	}
+	panelStoreMu.Unlock()
+	_ = persistPanelStore()
 	writePanelJSON(w, map[string]interface{}{
 		"ok":      true,
-		"message": "сертификат сохранён — перезапустите панель",
+		"message": "сертификат сохранён",
 		"cert":    panelCertInfo(),
 	})
 }
@@ -265,29 +369,28 @@ func panelTLSLetsencrypt(w http.ResponseWriter, r *http.Request) {
 	}
 	chain := filepath.Join("/etc/letsencrypt/live", domain, "fullchain.pem")
 	key := filepath.Join("/etc/letsencrypt/live", domain, "privkey.pem")
-	certB, err1 := os.ReadFile(chain)
-	keyB, err2 := os.ReadFile(key)
-	if err1 != nil || err2 != nil {
-		writePanelError(w, http.StatusBadGateway, "certbot OK, но файлы не найдены")
+	if _, err := tls.LoadX509KeyPair(chain, key); err != nil {
+		writePanelError(w, http.StatusBadGateway, "certbot OK, но файлы нечитаемы: "+err.Error())
 		return
 	}
-	certPath := filepath.Join(panelDir, panelCertFile)
-	keyPath := filepath.Join(panelDir, panelKeyFile)
-	ts := time.Now().Format("20060102-150405")
-	_ = os.Rename(certPath, certPath+".bak."+ts)
-	_ = os.Rename(keyPath, keyPath+".bak."+ts)
-	if err := os.WriteFile(certPath, certB, 0600); err != nil {
+	panelStoreMu.Lock()
+	if panelStore == nil {
+		panelStore = &panelFileStore{}
+	}
+	panelStore.TLSCertFile = chain
+	panelStore.TLSKeyFile = key
+	panelStoreMu.Unlock()
+	if err := persistPanelStore(); err != nil {
 		writePanelError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := os.WriteFile(keyPath, keyB, 0600); err != nil {
-		writePanelError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	panelAudit("tls_letsencrypt", domain)
 	writePanelJSON(w, map[string]interface{}{
-		"ok":      true,
-		"message": "Let's Encrypt OK — перезапустите панель",
-		"cert":    panelCertInfo(),
+		"ok":        true,
+		"message":   "Let's Encrypt OK — панель читает live-файлы напрямую",
+		"cert":      panelCertInfo(),
+		"cert_file": chain,
+		"key_file":  key,
 	})
 }
 
