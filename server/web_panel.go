@@ -62,7 +62,8 @@ type panelFileStore struct {
 	SocksProfiles []SocksProfile `json:"socks_profiles,omitempty"`
 	ActiveSocksID string `json:"active_socks_id,omitempty"`
 	TLSCertFile   string `json:"tls_cert_file,omitempty"`
-	TLSKeyFile    string            `json:"tls_key_file,omitempty"`
+	TLSKeyFile    string `json:"tls_key_file,omitempty"`
+	LinkHost      string `json:"link_host,omitempty"`
 }
 
 var (
@@ -505,15 +506,56 @@ func csqttStatNumber(stats map[string]interface{}, key string) int64 {
 	}
 }
 
+func panelLinkHost() string {
+	panelStoreMu.Lock()
+	host := ""
+	if panelStore != nil {
+		host = strings.TrimSpace(panelStore.LinkHost)
+	}
+	panelStoreMu.Unlock()
+	if host != "" {
+		return host
+	}
+	return getPublicIP()
+}
+
+func setPanelLinkHost(host string) {
+	host = strings.TrimSpace(strings.ToLower(host))
+	host = strings.TrimPrefix(host, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	if i := strings.IndexAny(host, "/:"); i >= 0 {
+		host = host[:i]
+	}
+	if host == "" {
+		return
+	}
+	panelStoreMu.Lock()
+	if panelStore == nil {
+		panelStore = &panelFileStore{}
+	}
+	panelStore.LinkHost = host
+	panelStoreMu.Unlock()
+}
+
+func linkHostFromCertPath(certFile string) string {
+	parts := strings.Split(filepath.ToSlash(certFile), "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "live" && parts[i+1] != "" {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
 func panelClientLink(pass, hash string) (wdtt string, qwdtt string) {
-	ip := getPublicIP()
+	host := panelLinkHost()
 	if hash == "" {
 		hash = "-"
 	}
-	wdtt = fmt.Sprintf("wdtt://%s:56000:56001:56002:%s:%s", ip, pass, hash)
-	name := url.QueryEscape(fmt.Sprintf("qWDTT (%s)", ip))
+	wdtt = fmt.Sprintf("wdtt://%s:56000:56001:56002:%s:%s", host, pass, hash)
+	name := url.QueryEscape(fmt.Sprintf("qWDTT (%s)", host))
 	qwdtt = fmt.Sprintf("qwdtt://config?name=%s&peer=%s&hashes=%s&workers=9&port=9000&pass=%s",
-		name, url.QueryEscape(ip), url.QueryEscape(hash), url.QueryEscape(pass))
+		name, url.QueryEscape(host), url.QueryEscape(hash), url.QueryEscape(pass))
 	return
 }
 

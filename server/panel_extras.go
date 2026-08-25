@@ -218,11 +218,15 @@ func handlePanelTLS(w http.ResponseWriter, r *http.Request) {
 		info["key_file"] = keyPath
 		info["custom_paths"] = !isDefaultPanelTLS(certPath, keyPath)
 		panelStoreMu.Lock()
+		linkHost := ""
 		if panelStore != nil {
 			info["cert_file_setting"] = panelStore.TLSCertFile
 			info["key_file_setting"] = panelStore.TLSKeyFile
+			linkHost = strings.TrimSpace(panelStore.LinkHost)
 		}
 		panelStoreMu.Unlock()
+		info["link_host"] = linkHost
+		info["peer_host"] = panelLinkHost()
 		writePanelJSON(w, info)
 	case http.MethodPost:
 		if err := parsePanelForm(r); err != nil {
@@ -237,14 +241,35 @@ func handlePanelTLS(w http.ResponseWriter, r *http.Request) {
 			panelTLSLetsencrypt(w, r)
 		case "paths":
 			panelTLSSetPaths(w, r)
+		case "link_host":
+			panelTLSSetLinkHost(w, r)
 		case "clear_paths":
 			panelTLSClearPaths(w, r)
 		default:
-			writePanelError(w, http.StatusBadRequest, "action: paths | upload | letsencrypt | clear_paths")
+			writePanelError(w, http.StatusBadRequest, "action: paths | link_host | upload | letsencrypt | clear_paths")
 		}
 	default:
 		writePanelError(w, http.StatusMethodNotAllowed, "method")
 	}
+}
+
+func panelTLSSetLinkHost(w http.ResponseWriter, r *http.Request) {
+	domain := strings.TrimSpace(r.FormValue("domain"))
+	if domain == "" {
+		writePanelError(w, http.StatusBadRequest, "укажите домен")
+		return
+	}
+	setPanelLinkHost(domain)
+	if err := persistPanelStore(); err != nil {
+		writePanelError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	panelAudit("link_host", panelLinkHost())
+	writePanelJSON(w, map[string]interface{}{
+		"ok":        true,
+		"message":   "домен для ссылок: " + panelLinkHost(),
+		"link_host": panelLinkHost(),
+	})
 }
 
 func panelTLSSetPaths(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +296,9 @@ func panelTLSSetPaths(w http.ResponseWriter, r *http.Request) {
 	panelStore.TLSCertFile = certFile
 	panelStore.TLSKeyFile = keyFile
 	panelStoreMu.Unlock()
+	if h := linkHostFromCertPath(certFile); h != "" {
+		setPanelLinkHost(h)
+	}
 	if err := persistPanelStore(); err != nil {
 		writePanelError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -353,6 +381,8 @@ func panelTLSLetsencrypt(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusBadRequest, "domain и email обязательны")
 		return
 	}
+	setPanelLinkHost(domain)
+	_ = persistPanelStore()
 	if _, err := exec.LookPath("certbot"); err != nil {
 		writePanelError(w, http.StatusBadRequest, "certbot не установлен на сервере")
 		return
@@ -380,6 +410,7 @@ func panelTLSLetsencrypt(w http.ResponseWriter, r *http.Request) {
 	panelStore.TLSCertFile = chain
 	panelStore.TLSKeyFile = key
 	panelStoreMu.Unlock()
+	setPanelLinkHost(domain)
 	if err := persistPanelStore(); err != nil {
 		writePanelError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -387,10 +418,11 @@ func panelTLSLetsencrypt(w http.ResponseWriter, r *http.Request) {
 	panelAudit("tls_letsencrypt", domain)
 	writePanelJSON(w, map[string]interface{}{
 		"ok":        true,
-		"message":   "Let's Encrypt OK — панель читает live-файлы напрямую",
+		"message":   "Let's Encrypt OK — ссылки клиентов будут с доменом " + domain,
 		"cert":      panelCertInfo(),
 		"cert_file": chain,
 		"key_file":  key,
+		"link_host": panelLinkHost(),
 	})
 }
 

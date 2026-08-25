@@ -575,11 +575,12 @@ pre{
         </form>
         <form id="tls-le-form" style="margin-top:12px" onsubmit="return letsencryptTLS(event)">
           <div class="form-row">
-            <div class="field"><label>Домен</label><input name="domain" placeholder="panel.example.com" required></div>
-            <div class="field"><label>Email</label><input name="email" type="email" placeholder="admin@example.com" required></div>
+            <div class="field"><label>Домен</label><input name="domain" id="tls-domain" placeholder="panel.example.com" required></div>
+            <div class="field"><label>Email</label><input name="email" type="email" placeholder="admin@example.com"></div>
           </div>
-          <p class="hint">Let's Encrypt standalone — порт 80 должен быть свободен. После выпуска пути сохранятся автоматически.</p>
+          <p class="hint">Домен используется в ссылках клиентов (вместо IP). Let's Encrypt — порт 80 должен быть свободен.</p>
           <div class="row">
+            <button class="btn btn-sm" type="button" onclick="saveLinkHost()">Сохранить домен</button>
             <button class="btn btn-tonal btn-sm" type="submit">Let's Encrypt</button>
             <button class="btn btn-ghost btn-sm" type="button" onclick="renewTLS()">Обновить certbot renew</button>
           </div>
@@ -1363,12 +1364,33 @@ async function loadTLS(){
     const d = await api('/api/tls');
     const certInp = document.getElementById('tls-cert-file');
     const keyInp = document.getElementById('tls-key-file');
+    const domainInp = document.getElementById('tls-domain');
     if (certInp) certInp.value = d.cert_file_setting || d.cert_file || '';
     if (keyInp) keyInp.value = d.key_file_setting || d.key_file || '';
+    if (domainInp && d.link_host) domainInp.value = d.link_host;
     if (d.error) { el.textContent = d.error; return; }
     const pathHint = d.cert_file ? ` · <code>${esc(d.cert_file)}</code>` : '';
-    el.innerHTML = `<b>${esc(d.subject||'?')}</b> · issuer ${esc(d.issuer||'?')} · до ${esc(d.not_after||'?')} ${d.self_signed?'· self-signed':''}${pathHint}`;
+    const hostHint = d.peer_host ? ` · ссылки: <b>${esc(d.peer_host)}</b>` : '';
+    el.innerHTML = `<b>${esc(d.subject||'?')}</b> · issuer ${esc(d.issuer||'?')} · до ${esc(d.not_after||'?')} ${d.self_signed?'· self-signed':''}${pathHint}${hostHint}`;
   } catch (ex) { el.textContent = ex.message || ex; }
+}
+async function saveLinkHost(){
+  const err = document.getElementById('tls-err');
+  const domain = document.getElementById('tls-domain')?.value || '';
+  err.textContent = '';
+  try {
+    const d = await api('/api/tls', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({action:'link_host', domain})
+    });
+    notify(d.message || 'Домен сохранён', true);
+    await loadTLS();
+    await refresh();
+  } catch (ex) {
+    err.className = 'status bad';
+    err.textContent = ex.message || ex;
+  }
 }
 async function saveTLSPaths(e){
   e.preventDefault();
@@ -1398,13 +1420,19 @@ async function letsencryptTLS(e){
   e.preventDefault();
   const err = document.getElementById('tls-err');
   err.textContent = '';
+  const f = new FormData(e.target);
+  if (!(f.get('email')||'').trim()) {
+    err.className = 'status bad';
+    err.textContent = 'для Let\'s Encrypt укажите email';
+    return false;
+  }
   if (!confirm('Запустить certbot standalone? Порт 80 должен быть свободен.')) return false;
   try {
-    const f = new FormData(e.target);
     const body = new URLSearchParams({action:'letsencrypt', domain:f.get('domain'), email:f.get('email')});
     const d = await api('/api/tls', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
     notify(d.message || 'Let\'s Encrypt OK', true);
     await loadTLS();
+    await refresh();
   } catch (ex) {
     err.className = 'status bad';
     err.textContent = ex.message || ex;

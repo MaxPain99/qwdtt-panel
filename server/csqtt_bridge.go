@@ -243,12 +243,12 @@ func csqttDeactivateLocalProxy() error {
 }
 
 func csqttConnectLink(password string, peer uint16, hashes string) string {
-	ip := getPublicIP()
+	host := panelLinkHost()
 	if peer == 0 {
 		peer = csqttDefaultPeer
 	}
 	u := fmt.Sprintf("csqtt://connect?v=2&host=%s&peer=%d&password=%s",
-		url.QueryEscape(ip), peer, url.QueryEscape(password))
+		url.QueryEscape(host), peer, url.QueryEscape(password))
 	var hs []string
 	for _, h := range strings.Split(hashes, ",") {
 		h = strings.TrimSpace(h)
