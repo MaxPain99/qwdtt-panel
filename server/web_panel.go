@@ -60,11 +60,8 @@ type panelFileStore struct {
 	Socks         *SocksProfile  `json:"socks,omitempty"`
 	SocksOn       bool           `json:"socks_on,omitempty"`
 	SocksProfiles []SocksProfile `json:"socks_profiles,omitempty"`
-	ActiveSocksID string         `json:"active_socks_id,omitempty"`
-	CsqttURL      string                `json:"csqtt_url,omitempty"`
-	CsqttUser     string                `json:"csqtt_user,omitempty"`
-	CsqttPass   string `json:"csqtt_pass,omitempty"`
-	TLSCertFile string `json:"tls_cert_file,omitempty"`
+	ActiveSocksID string `json:"active_socks_id,omitempty"`
+	TLSCertFile   string `json:"tls_cert_file,omitempty"`
 	TLSKeyFile    string            `json:"tls_key_file,omitempty"`
 }
 
