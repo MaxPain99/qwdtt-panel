@@ -579,11 +579,11 @@ pre{
             <div class="field"><label>Email</label><input name="email" type="email" placeholder="admin@example.com" required></div>
           </div>
           <p class="hint">Let's Encrypt standalone — порт 80 должен быть свободен. После выпуска пути сохранятся автоматически.</p>
-          <button class="btn btn-tonal btn-sm" type="submit">Let's Encrypt</button>
+          <div class="row">
+            <button class="btn btn-tonal btn-sm" type="submit">Let's Encrypt</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="renewTLS()">Обновить certbot renew</button>
+          </div>
         </form>
-        <div class="row" style="margin-top:8px">
-          <button class="btn btn-ghost btn-sm" type="button" onclick="renewTLS()">Обновить certbot renew</button>
-        </div>
         <p id="tls-err" class="status off"></p>
       </div>
 
