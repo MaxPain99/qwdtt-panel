@@ -732,6 +732,10 @@ pre{
     <div class="modal-head"><span>QR-код</span><button class="btn btn-ghost btn-sm" type="button" onclick="closeQR()">Закрыть</button></div>
     <div id="qr-canvas"></div>
     <p class="hint" id="qr-text" style="word-break:break-all;margin-top:12px"></p>
+    <div class="row" style="margin-top:12px;justify-content:center;flex-wrap:wrap;gap:8px">
+      <button class="btn btn-tonal btn-sm" type="button" id="qr-copy-btn" onclick="copyQRLink(this)">Копировать ссылку</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="qr-copy-wdtt" hidden onclick="copyQRWdtt(this)">Копировать wdtt://</button>
+    </div>
   </div>
 </div>
 
@@ -742,6 +746,8 @@ let clientRows = [];
 let csqttRows = [];
 let createdPass = '';
 let createdLink = '';
+let qrCurrentLink = '';
+let qrCurrentWdtt = '';
 let clientKind = 'qwdtt';
 let nav = 'monitoring';
 let editMode = false;
@@ -1039,8 +1045,6 @@ function renderClientCard(c, i, kind){
     ${devicesHtml}
     ${csqttDevHtml}
     <div class="client-actions">
-      <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'${linkKey}',this)">копировать ссылку</button>
-      ${kind==='qwdtt' && c.wdtt_link ? `<button class="btn btn-ghost btn-sm" type="button" onclick="copyField(${i},'wdtt_link',this)">wdtt://</button>` : ''}
       ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="showQRLink(${i},'${linkKey}','${kind}')">QR</button>`}
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${editFn}">Редактировать</button>`}
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${toggleFn}">${active?'Выключить':'Включить'}</button>`}
@@ -1132,8 +1136,10 @@ function paintSocksBanner(s){
     el.textContent = '';
   }
 }
-function showQR(text){
+function showQR(text, wdttLink){
   text = String(text||'');
+  qrCurrentLink = text;
+  qrCurrentWdtt = String(wdttLink||'');
   document.getElementById('qr-text').textContent = text;
   const box = document.getElementById('qr-canvas');
   box.innerHTML = '';
@@ -1145,13 +1151,22 @@ function showQR(text){
     img.src = '/api/qr?text=' + encodeURIComponent(text);
     box.appendChild(img);
   }
+  const wdttBtn = document.getElementById('qr-copy-wdtt');
+  if (wdttBtn) wdttBtn.hidden = !qrCurrentWdtt;
   document.getElementById('qr-modal').hidden = false;
 }
 function showQRLink(i, key, kind){
   const rows = kind === 'csqtt' ? csqttRows : clientRows;
-  showQR((rows[i] && rows[i][key]) || '');
+  const c = rows[i];
+  showQR((c && c[key]) || '', (kind === 'qwdtt' && c && c.wdtt_link) || '');
 }
 function closeQR(){ document.getElementById('qr-modal').hidden = true; }
+function copyQRLink(btn){
+  copyText(qrCurrentLink).then(ok => flashBtn(btn, ok));
+}
+function copyQRWdtt(btn){
+  copyText(qrCurrentWdtt).then(ok => flashBtn(btn, ok));
+}
 
 function copyField(i, key, btn){
   copyText((clientRows[i] && clientRows[i][key]) || '').then(ok => flashBtn(btn, ok));
