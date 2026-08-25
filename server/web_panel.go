@@ -173,7 +173,6 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/tls", handlePanelTLS)
 	mux.HandleFunc("/api/tls/renew", handlePanelTLSRenew)
 	mux.HandleFunc("/api/csqtt/settings", handlePanelCsqttSettings)
-	mux.HandleFunc("/api/socks/profiles", handlePanelSocksProfiles)
 	mux.HandleFunc("/api/journal", handlePanelJournal)
 	mux.HandleFunc("/api/logs", handlePanelLogs)
 	mux.HandleFunc("/api/update-log", handlePanelUpdateLog)

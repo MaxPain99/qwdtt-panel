@@ -622,20 +622,6 @@ pre{
         <pre id="audit-log" class="update-log">—</pre>
       </div>
 
-      <div class="panel">
-        <h3>SOCKS профили</h3>
-        <div id="socks-profiles" class="hint">загрузка…</div>
-        <form id="socks-profile-form" onsubmit="return addSocksProfile(event)" style="margin-top:12px">
-          <div class="form-row">
-            <div class="field"><label>Хост</label><input name="host" value="127.0.0.1"></div>
-            <div class="field"><label>Порт</label><input name="port" type="number" value="1080"></div>
-            <div class="field"><label>Логин</label><input name="username"></div>
-            <div class="field"><label>Пароль</label><input name="password" type="password"></div>
-          </div>
-          <button class="btn btn-sm" type="submit">Добавить профиль</button>
-        </form>
-      </div>
-
       <div class="toolbar">
         <div class="pills">
           <button type="button" class="pill active" id="set-tab-qwdtt" onclick="showSettingsTab('qwdtt')">qWDTT</button>
@@ -839,7 +825,7 @@ function switchNav(name){
     document.getElementById('nav-'+id).classList.toggle('active', id === name);
   });
   if (name === 'clients' && clientKind === 'csqtt') loadCsqtt();
-  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); loadNotify(); loadAudit(); loadSocksProfiles(); }
+  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); loadNotify(); loadAudit(); }
   if (name === 'monitoring') refresh().catch(()=>{});
   if (name === 'logs') { switchLogSource(); }
 }
@@ -1389,48 +1375,6 @@ async function loadAudit(){
     const d = await api('/api/audit?lines=200');
     pre.textContent = d.text || '—';
   } catch (ex) { pre.textContent = ex.message || ex; }
-}
-async function loadSocksProfiles(){
-  const el = document.getElementById('socks-profiles');
-  if (!el) return;
-  try {
-    const d = await api('/api/socks/profiles');
-    const list = d.profiles || [];
-    if (!list.length) { el.textContent = 'Нет сохранённых профилей'; return; }
-    el.innerHTML = list.map((p, i) => `<div class="row" style="margin:6px 0">
-      <span>${esc(p.host)}:${p.port||1080} ${d.active_id===String(i)?'· активен':''}</span>
-      <button class="btn btn-tonal btn-sm" type="button" onclick="activateSocksProfile(${i})">Активировать</button>
-      <button class="btn btn-ghost btn-sm" type="button" onclick="deleteSocksProfile(${i})">Удалить</button>
-    </div>`).join('');
-  } catch (ex) { el.textContent = ex.message || ex; }
-}
-async function addSocksProfile(e){
-  e.preventDefault();
-  try {
-    const f = new FormData(e.target);
-    const body = new URLSearchParams(f);
-    body.set('action', 'add');
-    await api('/api/socks/profiles', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
-    e.target.reset();
-    await loadSocksProfiles();
-    notify('Профиль добавлен', true);
-  } catch (ex) { notify(ex.message || ex, false); }
-  return false;
-}
-async function activateSocksProfile(i){
-  try {
-    await api('/api/socks/profiles', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'activate', index:String(i)})});
-    await loadSocksProfiles();
-    await loadSocks();
-    notify('Профиль активирован', true);
-  } catch (ex) { notify(ex.message || ex, false); }
-}
-async function deleteSocksProfile(i){
-  if (!confirm('Удалить профиль?')) return;
-  try {
-    await api('/api/socks/profiles', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'delete', index:String(i)})});
-    await loadSocksProfiles();
-  } catch (ex) { notify(ex.message || ex, false); }
 }
 async function saveCsqttCreds(e){
   e.preventDefault();
