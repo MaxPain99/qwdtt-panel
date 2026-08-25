@@ -152,6 +152,37 @@ func panelAdminUpdatePassword(pass, label, vkHash string, days int, setDays bool
 	return nil
 }
 
+func panelAdminSetActive(pass string, active bool) error {
+	form := url.Values{}
+	form.Set("password", pass)
+	path := "/admin/passwords/deactivate"
+	if active {
+		path = "/admin/passwords/activate"
+	}
+	b, code, err := panelAdminDo(http.MethodPost, path, form)
+	if err != nil {
+		return err
+	}
+	if code >= 400 {
+		return fmt.Errorf("%s", strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
+func panelAdminUnbindDevice(pass, deviceID string) error {
+	form := url.Values{}
+	form.Set("password", pass)
+	form.Set("device_id", deviceID)
+	b, code, err := panelAdminDo(http.MethodPost, "/admin/passwords/unbind-device", form)
+	if err != nil {
+		return err
+	}
+	if code >= 400 {
+		return fmt.Errorf("%s", strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
 func panelAdminStatus() map[string]interface{} {
 	b, code, err := panelAdminDo(http.MethodGet, "/admin/status", nil)
 	if err != nil || code >= 400 {

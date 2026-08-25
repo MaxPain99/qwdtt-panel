@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net"
@@ -139,7 +140,11 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/clients", handlePanelClients)
 	mux.HandleFunc("/api/clients/delete", handlePanelDeleteClient)
 	mux.HandleFunc("/api/clients/update", handlePanelUpdateClient)
+	mux.HandleFunc("/api/clients/activate", handlePanelActivateClient)
+	mux.HandleFunc("/api/clients/deactivate", handlePanelDeactivateClient)
+	mux.HandleFunc("/api/clients/unbind", handlePanelUnbindDevice)
 	mux.HandleFunc("/api/logs", handlePanelLogs)
+	mux.HandleFunc("/api/update-log", handlePanelUpdateLog)
 	mux.HandleFunc("/api/logs/clear", handlePanelLogsClear)
 	mux.HandleFunc("/api/logs/toggle", handlePanelLogsToggle)
 	mux.HandleFunc("/api/socks", handlePanelSocks)
@@ -500,18 +505,19 @@ func parsePanelVkHashes(r *http.Request) (string, error) {
 
 func handlePanelClientsViaAdmin(w http.ResponseWriter, r *http.Request) {
 	type row struct {
-		Label         string `json:"label"`
-		Password      string `json:"password"`
-		Owner         bool   `json:"owner"`
-		Up            int64  `json:"up"`
-		Down          int64  `json:"down"`
-		MaxDevices    int    `json:"max_devices"`
-		ActiveDevices int    `json:"active_devices"`
-		Expires       string `json:"expires"`
-		Deactivated   bool   `json:"deactivated"`
-		Hashes        string `json:"hashes"`
-		QWDTTLink     string `json:"qwdtt_link"`
-		WDTTLink      string `json:"wdtt_link"`
+		Label         string   `json:"label"`
+		Password      string   `json:"password"`
+		Owner         bool     `json:"owner"`
+		Up            int64    `json:"up"`
+		Down          int64    `json:"down"`
+		MaxDevices    int      `json:"max_devices"`
+		ActiveDevices int      `json:"active_devices"`
+		DeviceIDs     []string `json:"device_ids"`
+		Expires       string   `json:"expires"`
+		Deactivated   bool     `json:"deactivated"`
+		Hashes        string   `json:"hashes"`
+		QWDTTLink     string   `json:"qwdtt_link"`
+		WDTTLink      string   `json:"wdtt_link"`
 	}
 	if r.Method == http.MethodGet {
 		out := []row{}
@@ -537,6 +543,7 @@ func handlePanelClientsViaAdmin(w http.ResponseWriter, r *http.Request) {
 				Down:          e.DownBytes,
 				MaxDevices:    e.MaxDevices,
 				ActiveDevices: e.ActiveDevices,
+				DeviceIDs:     e.DeviceIDs,
 				Expires:       exp,
 				Deactivated:   e.IsDeactivated,
 				Hashes:        e.VkHash,
@@ -570,7 +577,12 @@ func handlePanelClientsViaAdmin(w http.ResponseWriter, r *http.Request) {
 		days = n
 	}
 	label := strings.TrimSpace(r.FormValue("label"))
-	view, err := panelAdminCreatePassword(label, vkHash, days, 1)
+	maxDevices, err := parsePanelMaxDevices(r, 1)
+	if err != nil {
+		writePanelError(w, http.StatusBadRequest, "max_devices")
+		return
+	}
+	view, err := panelAdminCreatePassword(label, vkHash, days, maxDevices)
 	if err != nil {
 		writePanelError(w, http.StatusBadGateway, err.Error())
 		return
@@ -593,18 +605,19 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet {
 		type row struct {
-			Label         string `json:"label"`
-			Password      string `json:"password"`
-			Owner         bool   `json:"owner"`
-			Up            int64  `json:"up"`
-			Down          int64  `json:"down"`
-			MaxDevices    int    `json:"max_devices"`
-			ActiveDevices int    `json:"active_devices"`
-			Expires       string `json:"expires"`
-			Deactivated   bool   `json:"deactivated"`
-			Hashes        string `json:"hashes"`
-			QWDTTLink     string `json:"qwdtt_link"`
-			WDTTLink      string `json:"wdtt_link"`
+			Label         string   `json:"label"`
+			Password      string   `json:"password"`
+			Owner         bool     `json:"owner"`
+			Up            int64    `json:"up"`
+			Down          int64    `json:"down"`
+			MaxDevices    int      `json:"max_devices"`
+			ActiveDevices int      `json:"active_devices"`
+			DeviceIDs     []string `json:"device_ids"`
+			Expires       string   `json:"expires"`
+			Deactivated   bool     `json:"deactivated"`
+			Hashes        string   `json:"hashes"`
+			QWDTTLink     string   `json:"qwdtt_link"`
+			WDTTLink      string   `json:"wdtt_link"`
 		}
 		out := []row{}
 		dbMutex.Lock()
@@ -645,6 +658,7 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 					Down:          e.DownBytes,
 					MaxDevices:    e.MaxDevices,
 					ActiveDevices: active,
+					DeviceIDs:     ids,
 					Expires:       exp,
 					Deactivated:   e.IsDeactivated,
 					Hashes:        e.VkHash,
@@ -680,6 +694,11 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 		days = n
 	}
 	label := strings.TrimSpace(r.FormValue("label"))
+	maxDevices, err := parsePanelMaxDevices(r, 1)
+	if err != nil {
+		writePanelError(w, http.StatusBadRequest, "max_devices")
+		return
+	}
 	dbMutex.Lock()
 	if db == nil {
 		dbMutex.Unlock()
@@ -726,7 +745,7 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 	db.Passwords[newPass] = &PasswordEntry{
 		Label:      label,
 		ExpiresAt:  expiresAt,
-		MaxDevices: 1,
+		MaxDevices: maxDevices,
 		VkHash:     vkHash,
 		Ports:      "56000,56001,56002",
 	}
@@ -883,6 +902,186 @@ func handlePanelUpdateClient(w http.ResponseWriter, r *http.Request) {
 	dbMutex.Unlock()
 	_, qwdtt := panelClientLink(pass, vkHash)
 	writePanelJSON(w, map[string]interface{}{"ok": true, "qwdtt_link": qwdtt, "label": label})
+}
+
+func parsePanelMaxDevices(r *http.Request, def int) (int, error) {
+	v := strings.TrimSpace(r.FormValue("max_devices"))
+	if v == "" {
+		if def < 1 {
+			def = 1
+		}
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 || n > 64 {
+		return 0, fmt.Errorf("max_devices")
+	}
+	return n, nil
+}
+
+func handlePanelActivateClient(w http.ResponseWriter, r *http.Request) {
+	handlePanelSetClientActive(w, r, true)
+}
+
+func handlePanelDeactivateClient(w http.ResponseWriter, r *http.Request) {
+	handlePanelSetClientActive(w, r, false)
+}
+
+func handlePanelSetClientActive(w http.ResponseWriter, r *http.Request, active bool) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	pass := strings.TrimSpace(r.FormValue("password"))
+	if pass == "" {
+		writePanelError(w, http.StatusBadRequest, "password")
+		return
+	}
+	if panelWdttAdminEnabled() {
+		if err := panelAdminSetActive(pass, active); err != nil {
+			writePanelError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writePanelJSON(w, map[string]bool{"ok": true, "active": active})
+		return
+	}
+	dbMutex.Lock()
+	entry, ok := db.Passwords[pass]
+	if !ok || entry == nil {
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if active {
+		if err := serverWrapKeys.AddPassword(pass); err != nil {
+			dbMutex.Unlock()
+			writePanelError(w, http.StatusInternalServerError, "activate: "+err.Error())
+			return
+		}
+		entry.IsDeactivated = false
+	} else {
+		entry.IsDeactivated = true
+		disconnectCredentialConnections(pass)
+		serverWrapKeys.RemovePassword(pass)
+		disconnectPasswordDevicesLocked(entry)
+	}
+	if err := saveDB(); err != nil {
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusInternalServerError, "save: "+err.Error())
+		return
+	}
+	dbMutex.Unlock()
+	writePanelJSON(w, map[string]bool{"ok": true, "active": active})
+}
+
+func handlePanelUnbindDevice(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	pass := strings.TrimSpace(r.FormValue("password"))
+	deviceID := strings.TrimSpace(r.FormValue("device_id"))
+	if pass == "" || deviceID == "" {
+		writePanelError(w, http.StatusBadRequest, "password and device_id")
+		return
+	}
+	if panelWdttAdminEnabled() {
+		if err := panelAdminUnbindDevice(pass, deviceID); err != nil {
+			writePanelError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writePanelJSON(w, map[string]bool{"ok": true})
+		return
+	}
+	dbMutex.Lock()
+	entry, ok := db.Passwords[pass]
+	if !ok || entry == nil {
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusNotFound, "not found")
+		return
+	}
+	disconnectCredentialDeviceConnections(pass, deviceID)
+	unbindDevices(entry, deviceID)
+	if err := saveDB(); err != nil {
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusInternalServerError, "save: "+err.Error())
+		return
+	}
+	dbMutex.Unlock()
+	writePanelJSON(w, map[string]bool{"ok": true})
+}
+
+const panelUpdateLogPath = "/var/log/qwdtt-panel-update.log"
+
+func handlePanelUpdateLog(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	const maxTail = 96 << 10 // 96 KiB
+	st, err := os.Stat(panelUpdateLogPath)
+	if err != nil {
+		writePanelJSON(w, map[string]interface{}{
+			"path": panelUpdateLogPath,
+			"text": "",
+			"empty": true,
+			"error": "лог ещё не создан",
+		})
+		return
+	}
+	f, err := os.Open(panelUpdateLogPath)
+	if err != nil {
+		writePanelError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer f.Close()
+	size := st.Size()
+	var start int64
+	if size > maxTail {
+		start = size - maxTail
+	}
+	if start > 0 {
+		if _, err := f.Seek(start, 0); err != nil {
+			writePanelError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxTail+1))
+	if err != nil {
+		writePanelError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	text := string(b)
+	if start > 0 {
+		if i := strings.IndexByte(text, '\n'); i >= 0 && i+1 < len(text) {
+			text = text[i+1:]
+		}
+		text = "…\n" + text
+	}
+	writePanelJSON(w, map[string]interface{}{
+		"path":  panelUpdateLogPath,
+		"text":  text,
+		"size":  size,
+		"mtime": st.ModTime().Local().Format("2006-01-02 15:04:05"),
+		"empty": len(strings.TrimSpace(text)) == 0,
+	})
 }
 
 func handlePanelLogs(w http.ResponseWriter, r *http.Request) {

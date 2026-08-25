@@ -211,6 +211,21 @@ html:not([data-theme="dark"]) .client-card{background:#fff}
   display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;margin-top:4px;
   border-top:1px solid var(--md-outline-variant);
 }
+.device-list{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.device-row{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:6px 10px;border-radius:var(--md-shape-sm);
+  background:var(--md-surface-container);font-family:var(--mono);font-size:.78rem;
+}
+.device-row .btn{margin-left:auto}
+.update-log{
+  margin-top:12px;max-height:280px;overflow:auto;
+  background:var(--md-surface-container-lowest,#0e0e12);
+  color:var(--md-on-surface);border:1px solid var(--md-outline-variant);
+  border-radius:var(--md-shape-sm);padding:12px;font:12px/1.45 var(--mono);
+  white-space:pre-wrap;word-break:break-word;
+}
+html:not([data-theme="dark"]) .update-log{background:#1a1c20;color:#e2e2e6}
 
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;
@@ -465,13 +480,16 @@ pre{
 
       <div class="panel">
         <h3>Обновление с GitHub</h3>
-        <p class="hint">Отдельно: сервер qWDTT, CSQTT и панель. Лог: <code>/var/log/qwdtt-panel-update.log</code></p>
+        <p class="hint">Отдельно: сервер qWDTT, CSQTT и панель.</p>
         <div class="row">
           <button class="btn btn-sm" type="button" onclick="upd('qwdtt')">Сервер qWDTT</button>
           <button class="btn btn-tonal btn-sm" type="button" onclick="upd('csqtt')">Сервер CSQTT</button>
           <button class="btn btn-tonal btn-sm" type="button" onclick="upd('panel')">Панель</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="loadUpdateLog()">Обновить лог</button>
         </div>
         <p id="upd-status" class="status off"></p>
+        <p id="upd-log-meta" class="hint" style="margin-top:8px"></p>
+        <pre id="upd-log" class="update-log">лог ещё не загружен</pre>
       </div>
 
       <div class="toolbar">
@@ -533,6 +551,10 @@ pre{
         <label for="f-days">Срок, дни</label>
         <input id="f-days" name="days" type="number" min="1" max="365" value="30">
         <label class="check"><input type="checkbox" id="f-unlimited" onchange="toggleUnlimited()"> Неограничено</label>
+      </div>
+      <div class="field" id="f-max-wrap">
+        <label for="f-max-devices">Макс. устройств</label>
+        <input id="f-max-devices" name="max_devices" type="number" min="1" max="64" value="1">
       </div>
       <div class="field">
         <label>VK hash — до 4</label>
@@ -625,7 +647,7 @@ function switchNav(name){
     document.getElementById('nav-'+id).classList.toggle('active', id === name);
   });
   if (name === 'clients' && clientKind === 'csqtt') loadCsqtt();
-  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); }
+  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); }
   if (name === 'monitoring') refresh().catch(()=>{});
   if (name === 'logs') logs();
 }
@@ -656,7 +678,22 @@ function renderClientCard(c, i, kind){
   const linkKey = kind === 'csqtt' ? 'csqtt_link' : 'qwdtt_link';
   const delFn = kind === 'csqtt' ? `delCsqtt(${i})` : `del(${i})`;
   const editFn = kind === 'csqtt' ? `openEdit(${i},'csqtt')` : `openEdit(${i},'qwdtt')`;
+  const toggleFn = kind === 'csqtt' ? `toggleCsqtt(${i})` : `toggleClient(${i})`;
   const copyFn = kind === 'csqtt' ? 'copyCsqtt' : 'copyField';
+  const maxDev = c.max_devices || 1;
+  let devicesHtml = '';
+  if (kind === 'qwdtt' && !c.owner) {
+    const ids = Array.isArray(c.device_ids) ? c.device_ids.filter(Boolean) : [];
+    if (ids.length) {
+      devicesHtml = `<div><div class="field-k">Привязанные устройства</div><div class="device-list">` +
+        ids.map(id => {
+          const short = String(id).length > 18 ? String(id).slice(0,8)+'…'+String(id).slice(-6) : String(id);
+          return `<div class="device-row"><span title="${esc(id)}">${esc(short)}</span>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="unbindDevice(${i},${JSON.stringify(String(id))})">Отвязать</button>
+          </div>`;
+        }).join('') + `</div></div>`;
+    }
+  }
   return `<article class="client-card">
     <div class="client-card-head">
       <div class="client-name">${esc(name)}</div>
@@ -678,11 +715,13 @@ function renderClientCard(c, i, kind){
     </div>
     <div>
       <div class="field-k">${kind==='csqtt'?'Потоки':'Устройства'}</div>
-      <span class="flow">${flows}${kind==='qwdtt' && c.max_devices ? '/'+c.max_devices : ''}</span>
+      <span class="flow">${flows}${kind==='qwdtt' ? '/'+maxDev : ''}</span>
     </div>
+    ${devicesHtml}
     <div class="client-actions">
       <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'${linkKey}',this)">копировать ссылку</button>
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${editFn}">Редактировать</button>`}
+      ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${toggleFn}">${active?'Выключить':'Включить'}</button>`}
       ${c.owner ? '' : `<button class="btn btn-bad btn-sm" type="button" onclick="${delFn}">Удалить</button>`}
     </div>
   </article>`;
@@ -790,13 +829,19 @@ function toggleUnlimited(){
   if (unlim.checked) { days.value = ''; days.placeholder = 'Неограничено'; }
   else { if (!days.value) days.value = '30'; days.placeholder = ''; }
 }
+function syncMaxDevicesField(){
+  const wrap = document.getElementById('f-max-wrap');
+  if (wrap) wrap.hidden = clientKind === 'csqtt';
+}
 function openCreate(){
   editMode = false;
   editPassword = '';
   const form = document.getElementById('create-form');
   form.reset(); form.days.value = '30';
+  if (form.max_devices) form.max_devices.value = '1';
   document.getElementById('f-unlimited').checked = false;
   toggleUnlimited();
+  syncMaxDevicesField();
   document.getElementById('cerr').textContent = '';
   form.hidden = false;
   document.getElementById('created').hidden = true;
@@ -831,6 +876,8 @@ function openEdit(i, kind){
     form.days.value = String(daysUntil(c.expires));
   }
   toggleUnlimited();
+  if (form.max_devices) form.max_devices.value = String(c.max_devices > 0 ? c.max_devices : 1);
+  syncMaxDevicesField();
   const hashes = String(c.hashes || '').split(/[,;\s]+/).filter(Boolean);
   for (let n = 1; n <= 4; n++) {
     const inp = form['vk_hash'+n];
@@ -903,11 +950,44 @@ async function del(i){
     await refresh();
   } catch (ex) { alert(ex.message || ex); }
 }
+async function toggleClient(i){
+  const c = clientRows[i];
+  if (!c || c.owner) return;
+  const on = !c.deactivated;
+  const path = on ? '/api/clients/deactivate' : '/api/clients/activate';
+  if (!confirm(on ? 'Выключить клиента?' : 'Включить клиента?')) return;
+  try {
+    await api(path, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({password:c.password})});
+    await refresh();
+  } catch (ex) { alert(ex.message || ex); }
+}
+async function unbindDevice(i, deviceId){
+  const c = clientRows[i];
+  if (!c || !deviceId) return;
+  if (!confirm('Отвязать устройство?\nСлот освободится, клиенту нужно будет заново войти.')) return;
+  try {
+    await api('/api/clients/unbind', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({password:c.password, device_id:deviceId})
+    });
+    await refresh();
+  } catch (ex) { alert(ex.message || ex); }
+}
 async function delCsqtt(i){
   const p = csqttRows[i] && csqttRows[i].password;
   if (!p || csqttRows[i].owner || !confirm('Удалить клиента CSQTT?')) return;
   try {
     await api('/api/csqtt/clients/delete', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({password:p})});
+    await loadCsqtt();
+  } catch (ex) { alert(ex.message || ex); }
+}
+async function toggleCsqtt(i){
+  const c = csqttRows[i];
+  if (!c || c.owner) return;
+  if (!confirm(c.deactivated ? 'Включить клиента CSQTT?' : 'Выключить клиента CSQTT?')) return;
+  try {
+    await api('/api/csqtt/clients/toggle', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({password:c.password})});
     await loadCsqtt();
   } catch (ex) { alert(ex.message || ex); }
 }
@@ -1076,11 +1156,41 @@ async function upd(target){
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body: new URLSearchParams({target, mode:'source'})
     });
-    if (st) st.textContent = 'Обновление запущено ('+label+'). Лог: /var/log/qwdtt-panel-update.log';
-    alert('Обновление запущено ('+label+'). Через несколько минут обновите страницу.');
+    if (st) st.textContent = 'Обновление запущено ('+label+'). Смотрите лог ниже.';
+    await loadUpdateLog();
+    startUpdateLogPoll();
   } catch (ex) {
     if (st) { st.className = 'status bad'; st.textContent = ex.message || ex; }
     alert(ex.message || ex);
+  }
+}
+let updateLogTimer = null;
+function startUpdateLogPoll(){
+  if (updateLogTimer) clearInterval(updateLogTimer);
+  let n = 0;
+  updateLogTimer = setInterval(async () => {
+    n++;
+    await loadUpdateLog();
+    if (n >= 40) { clearInterval(updateLogTimer); updateLogTimer = null; }
+  }, 3000);
+}
+async function loadUpdateLog(){
+  const pre = document.getElementById('upd-log');
+  const meta = document.getElementById('upd-log-meta');
+  if (!pre) return;
+  try {
+    const d = await api('/api/update-log');
+    pre.textContent = d.empty ? (d.error || 'лог пуст') : (d.text || '');
+    if (meta) {
+      const bits = [];
+      if (d.path) bits.push(d.path);
+      if (d.mtime) bits.push('изменён '+d.mtime);
+      if (d.size) bits.push(fmt(d.size));
+      meta.textContent = bits.join(' · ');
+    }
+    pre.scrollTop = pre.scrollHeight;
+  } catch (ex) {
+    pre.textContent = 'не удалось прочитать лог: ' + (ex.message || ex);
   }
 }
 function svcStatusEl(target){
