@@ -339,12 +339,16 @@ func handleAdminUpdatePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Form.Has("days") {
 		parsed, err := strconv.Atoi(r.FormValue("days"))
-		if err != nil || parsed < 1 || parsed > 365 {
+		if err != nil || parsed < 0 || parsed > 365 {
 			dbMutex.Unlock()
-			writeAdminError(w, http.StatusBadRequest, "days must be between 1 and 365")
+			writeAdminError(w, http.StatusBadRequest, "days must be between 0 and 365")
 			return
 		}
-		entry.ExpiresAt = time.Now().Add(time.Duration(parsed) * 24 * time.Hour).Unix()
+		if parsed == 0 {
+			entry.ExpiresAt = 0
+		} else {
+			entry.ExpiresAt = time.Now().Add(time.Duration(parsed) * 24 * time.Hour).Unix()
+		}
 	}
 
 	saveDB()

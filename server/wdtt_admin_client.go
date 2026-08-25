@@ -129,6 +129,29 @@ func panelAdminDeletePassword(pass string) error {
 	return nil
 }
 
+func panelAdminUpdatePassword(pass, label, vkHash string, days int, setDays bool, maxDevices int, setMax bool) error {
+	form := url.Values{}
+	form.Set("password", pass)
+	form.Set("label", label)
+	if vkHash != "" {
+		form.Set("vk_hash", vkHash)
+	}
+	if setDays {
+		form.Set("days", fmt.Sprintf("%d", days))
+	}
+	if setMax && maxDevices > 0 {
+		form.Set("max_devices", fmt.Sprintf("%d", maxDevices))
+	}
+	b, code, err := panelAdminDo(http.MethodPost, "/admin/passwords/update", form)
+	if err != nil {
+		return err
+	}
+	if code >= 400 {
+		return fmt.Errorf("%s", strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
 func panelAdminStatus() map[string]interface{} {
 	b, code, err := panelAdminDo(http.MethodGet, "/admin/status", nil)
 	if err != nil || code >= 400 {

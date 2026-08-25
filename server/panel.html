@@ -340,7 +340,6 @@ pre{
     <div class="app-bar-logo">QC</div>
     <div>
       <h1>qWDTT / CSQTT</h1>
-      <div class="app-bar-sub">panel by MaxPain99</div>
     </div>
   </div>
   <div class="app-bar-actions">
@@ -547,7 +546,7 @@ pre{
       <p id="cerr" class="status off"></p>
       <div class="modal-actions">
         <button class="btn btn-ghost" type="button" onclick="closeCreate()">Отмена</button>
-        <button class="btn" type="submit">Создать</button>
+        <button class="btn" type="submit" id="create-submit">Создать</button>
       </div>
     </form>
     <div id="created" hidden>
@@ -574,6 +573,8 @@ let createdPass = '';
 let createdLink = '';
 let clientKind = 'qwdtt';
 let nav = 'monitoring';
+let editMode = false;
+let editPassword = '';
 
 function applyTheme(theme){
   // CSS dark tokens live on html[data-theme="dark"]; light = no attribute
@@ -654,6 +655,7 @@ function renderClientCard(c, i, kind){
   const flows = kind === 'csqtt' ? (c.sessions||0) : (c.active_devices||0);
   const linkKey = kind === 'csqtt' ? 'csqtt_link' : 'qwdtt_link';
   const delFn = kind === 'csqtt' ? `delCsqtt(${i})` : `del(${i})`;
+  const editFn = kind === 'csqtt' ? `openEdit(${i},'csqtt')` : `openEdit(${i},'qwdtt')`;
   const copyFn = kind === 'csqtt' ? 'copyCsqtt' : 'copyField';
   return `<article class="client-card">
     <div class="client-card-head">
@@ -680,6 +682,7 @@ function renderClientCard(c, i, kind){
     </div>
     <div class="client-actions">
       <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'${linkKey}',this)">копировать ссылку</button>
+      ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${editFn}">Редактировать</button>`}
       ${c.owner ? '' : `<button class="btn btn-bad btn-sm" type="button" onclick="${delFn}">Удалить</button>`}
     </div>
   </article>`;
@@ -788,6 +791,8 @@ function toggleUnlimited(){
   else { if (!days.value) days.value = '30'; days.placeholder = ''; }
 }
 function openCreate(){
+  editMode = false;
+  editPassword = '';
   const form = document.getElementById('create-form');
   form.reset(); form.days.value = '30';
   document.getElementById('f-unlimited').checked = false;
@@ -796,9 +801,54 @@ function openCreate(){
   form.hidden = false;
   document.getElementById('created').hidden = true;
   document.getElementById('modal-title').textContent = clientKind === 'csqtt' ? 'Новый доступ CSQTT' : 'Новый доступ qWDTT';
+  const sub = document.getElementById('create-submit');
+  if (sub) sub.textContent = 'Создать';
   document.getElementById('modal').hidden = false;
 }
-function closeCreate(){ document.getElementById('modal').hidden = true; }
+function daysUntil(exp){
+  if (!exp) return 0;
+  const t = Date.parse(exp);
+  if (!t) return 30;
+  const d = Math.ceil((t - Date.now()) / 86400000);
+  return d > 0 ? d : 1;
+}
+function openEdit(i, kind){
+  kind = kind === 'csqtt' ? 'csqtt' : 'qwdtt';
+  clientKind = kind;
+  const rows = kind === 'csqtt' ? csqttRows : clientRows;
+  const c = rows[i];
+  if (!c || c.owner) return;
+  editMode = true;
+  editPassword = c.password || '';
+  const form = document.getElementById('create-form');
+  form.reset();
+  form.label.value = c.label || '';
+  const unlimited = !c.expires;
+  document.getElementById('f-unlimited').checked = unlimited;
+  if (unlimited) {
+    form.days.value = '';
+  } else {
+    form.days.value = String(daysUntil(c.expires));
+  }
+  toggleUnlimited();
+  const hashes = String(c.hashes || '').split(/[,;\s]+/).filter(Boolean);
+  for (let n = 1; n <= 4; n++) {
+    const inp = form['vk_hash'+n];
+    if (inp) inp.value = hashes[n-1] || '';
+  }
+  document.getElementById('cerr').textContent = '';
+  form.hidden = false;
+  document.getElementById('created').hidden = true;
+  document.getElementById('modal-title').textContent = kind === 'csqtt' ? 'Редактировать CSQTT' : 'Редактировать qWDTT';
+  const sub = document.getElementById('create-submit');
+  if (sub) sub.textContent = 'Сохранить';
+  document.getElementById('modal').hidden = false;
+}
+function closeCreate(){
+  document.getElementById('modal').hidden = true;
+  editMode = false;
+  editPassword = '';
+}
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (!document.getElementById('modal').hidden) closeCreate();
@@ -813,10 +863,22 @@ async function create(e){
     const f = new FormData(e.target);
     const hashes = [1,2,3,4].map(n => (f.get('vk_hash'+n)||'').trim()).filter(Boolean);
     if (!hashes.length) throw new Error('укажите VK hash');
-    const path = clientKind === 'csqtt' ? '/api/csqtt/clients' : '/api/clients';
     const body = new URLSearchParams(f);
     body.set('vk_hash', hashes.join(','));
     if (document.getElementById('f-unlimited')?.checked) body.set('days', '0');
+
+    if (editMode) {
+      if (!editPassword) throw new Error('нет пароля клиента');
+      body.set('password', editPassword);
+      const path = clientKind === 'csqtt' ? '/api/csqtt/clients/update' : '/api/clients/update';
+      await api(path, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+      closeCreate();
+      await refresh();
+      if (clientKind === 'csqtt') await loadCsqtt();
+      return false;
+    }
+
+    const path = clientKind === 'csqtt' ? '/api/csqtt/clients' : '/api/clients';
     const created = await api(path, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
     createdPass = created.password || '';
     createdLink = created.csqtt_link || created.qwdtt_link || '';
@@ -829,7 +891,7 @@ async function create(e){
     if (clientKind === 'csqtt') await loadCsqtt();
   } catch (ex) {
     err.className = 'status bad';
-    err.textContent = 'Не создан: ' + (ex.message || ex);
+    err.textContent = (editMode ? 'Не сохранено: ' : 'Не создан: ') + (ex.message || ex);
   }
   return false;
 }

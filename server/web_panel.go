@@ -138,6 +138,7 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/status", handlePanelStatus)
 	mux.HandleFunc("/api/clients", handlePanelClients)
 	mux.HandleFunc("/api/clients/delete", handlePanelDeleteClient)
+	mux.HandleFunc("/api/clients/update", handlePanelUpdateClient)
 	mux.HandleFunc("/api/logs", handlePanelLogs)
 	mux.HandleFunc("/api/logs/clear", handlePanelLogsClear)
 	mux.HandleFunc("/api/logs/toggle", handlePanelLogsToggle)
@@ -148,6 +149,7 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/csqtt/clients", handlePanelCsqttClients)
 	mux.HandleFunc("/api/csqtt/clients/delete", handlePanelCsqttDelete)
 	mux.HandleFunc("/api/csqtt/clients/toggle", handlePanelCsqttToggle)
+	mux.HandleFunc("/api/csqtt/clients/update", handlePanelCsqttUpdate)
 	mux.HandleFunc("/api/reboot", handlePanelReboot) // legacy no-op redirect
 	mux.HandleFunc("/api/services", handlePanelServices)
 	mux.HandleFunc("/api/restart", handlePanelRestart)
@@ -798,6 +800,91 @@ func handlePanelDeleteClient(w http.ResponseWriter, r *http.Request) {
 	writePanelJSON(w, map[string]bool{"ok": true})
 }
 
+func handlePanelUpdateClient(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	pass := strings.TrimSpace(r.FormValue("password"))
+	if pass == "" {
+		writePanelError(w, http.StatusBadRequest, "password")
+		return
+	}
+	label := strings.TrimSpace(r.FormValue("label"))
+	vkHash, err := parsePanelVkHashes(r)
+	if err != nil {
+		writePanelError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	days := 30
+	setDays := false
+	if v := r.FormValue("days"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > 365 {
+			writePanelError(w, http.StatusBadRequest, "days")
+			return
+		}
+		days = n
+		setDays = true
+	}
+	maxDevices := 0
+	setMax := false
+	if v := strings.TrimSpace(r.FormValue("max_devices")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			writePanelError(w, http.StatusBadRequest, "max_devices")
+			return
+		}
+		maxDevices = n
+		setMax = true
+	}
+
+	if panelWdttAdminEnabled() {
+		if err := panelAdminUpdatePassword(pass, label, vkHash, days, setDays, maxDevices, setMax); err != nil {
+			writePanelError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		_, qwdtt := panelClientLink(pass, vkHash)
+		writePanelJSON(w, map[string]interface{}{"ok": true, "qwdtt_link": qwdtt, "label": label})
+		return
+	}
+
+	dbMutex.Lock()
+	entry, ok := db.Passwords[pass]
+	if !ok || entry == nil {
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusNotFound, "not found")
+		return
+	}
+	entry.Label = label
+	entry.VkHash = vkHash
+	if setDays {
+		if days == 0 {
+			entry.ExpiresAt = 0
+		} else {
+			entry.ExpiresAt = time.Now().Add(time.Duration(days) * 24 * time.Hour).Unix()
+		}
+	}
+	if setMax {
+		entry.MaxDevices = maxDevices
+	}
+	if err := saveDB(); err != nil {
+		dbMutex.Unlock()
+		writePanelError(w, http.StatusInternalServerError, "save: "+err.Error())
+		return
+	}
+	dbMutex.Unlock()
+	_, qwdtt := panelClientLink(pass, vkHash)
+	writePanelJSON(w, map[string]interface{}{"ok": true, "qwdtt_link": qwdtt, "label": label})
+}
+
 func handlePanelLogs(w http.ResponseWriter, r *http.Request) {
 	if !requirePanelAuth(w, r) {
 		return
@@ -962,21 +1049,18 @@ func panelServiceSnapshot() map[string]interface{} {
 		}
 	}
 	if csqttVer == "" {
-		csqttVer = binaryBuildStamp(envOr(os.Getenv("CSQTT_BIN_PATH"), csqttDefaultBin))
+		// CSQTT — Rust: stamp/buildinfo обычно нет, останется mtime.
+		csqttVer = binaryVersion(envOr(os.Getenv("CSQTT_BIN_PATH"), csqttDefaultBin))
 	}
 	adminOK := false
-	qwdttVer := ""
 	if panelWdttAdminEnabled() {
 		if st := panelAdminStatus(); st != nil {
 			adminOK = true
-			if v, ok := st["version"].(string); ok {
-				qwdttVer = strings.TrimSpace(v)
-			}
 		}
 	}
-	if qwdttVer == "" {
-		qwdttVer = binaryBuildStamp(envOr(os.Getenv("QWDTT_BIN"), wdttDefaultBin))
-	}
+	// Версия с диска (stamp/buildinfo), не через exec и не из live API —
+	// так видно именно установленный бинарник.
+	qwdttVer := binaryVersion(envOr(os.Getenv("QWDTT_BIN"), wdttDefaultBin))
 	return map[string]interface{}{
 		"qwdtt": map[string]interface{}{
 			"unit":     "wdtt",

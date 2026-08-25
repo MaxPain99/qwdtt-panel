@@ -52,7 +52,8 @@ go_ldflags() {
   ver="$(git -C "$SRC_DIR" describe --tags --always --dirty 2>/dev/null || echo dev)"
   commit="$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || true)"
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf -- "-s -w -X main.BuildVersion=%s -X main.BuildCommit=%s -X main.BuildTime=%s" "$ver" "$commit" "$ts"
+  # Префиксы qwdtt-ver:/qwdtt-commit: — панель читает их из бинарника без exec.
+  printf -- "-s -w -X main.BuildVersion=qwdtt-ver:%s -X main.BuildCommit=qwdtt-commit:%s -X main.BuildTime=%s" "$ver" "$commit" "$ts"
 }
 
 ensure_panel_repo() {

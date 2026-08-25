@@ -547,3 +547,76 @@ func handlePanelCsqttToggle(w http.ResponseWriter, r *http.Request) {
 	}
 	writePanelJSON(w, map[string]bool{"ok": true})
 }
+
+func handlePanelCsqttUpdate(w http.ResponseWriter, r *http.Request) {
+	if !requirePanelAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writePanelError(w, http.StatusMethodNotAllowed, "method")
+		return
+	}
+	if err := parsePanelForm(r); err != nil {
+		writePanelError(w, http.StatusBadRequest, "form")
+		return
+	}
+	pass := strings.TrimSpace(r.FormValue("password"))
+	if pass == "" {
+		writePanelError(w, http.StatusBadRequest, "password")
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("label"))
+	if name == "" {
+		name = strings.TrimSpace(r.FormValue("name"))
+	}
+	if name == "" {
+		writePanelError(w, http.StatusBadRequest, "укажите имя")
+		return
+	}
+	days, _ := strconv.Atoi(r.FormValue("days"))
+	if days < 0 || days > 3650 {
+		days = 30
+	}
+	hashes, err := parseCsqttVkHashes(r)
+	if err != nil {
+		writePanelError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	peer := uint16(csqttDefaultPeer)
+	payload := map[string]interface{}{
+		"name":       name,
+		"days":       days,
+		"hash":       hashes,
+		"vk_hashes":  hashes,
+		"dtls_port":  peer,
+		"wg_port":    46001,
+		"local_port": 0,
+	}
+	path := "/api/clients/" + url.PathEscape(pass)
+	raw, status, err := csqttBr.do(http.MethodPut, path, payload)
+	if err != nil {
+		writePanelError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if status == http.StatusMethodNotAllowed || status == http.StatusNotFound {
+		raw, status, err = csqttBr.do(http.MethodPatch, path, payload)
+		if err != nil {
+			writePanelError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	}
+	if status >= 400 {
+		msg := strings.TrimSpace(string(raw))
+		if msg == "" {
+			msg = fmt.Sprintf("CSQTT HTTP %d", status)
+		}
+		writePanelError(w, http.StatusBadRequest, msg)
+		return
+	}
+	writePanelJSON(w, map[string]interface{}{
+		"ok":         true,
+		"password":   pass,
+		"csqtt_link": csqttConnectLink(pass, peer, hashes),
+		"label":      name,
+	})
+}
