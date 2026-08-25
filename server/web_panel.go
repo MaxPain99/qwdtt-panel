@@ -928,13 +928,18 @@ func handlePanelSocksDeactivate(w http.ResponseWriter, r *http.Request) {
 }
 
 func panelUnitActive(unit string) (active bool, state string) {
-	out, err := exec.Command("systemctl", "is-active", unit).CombinedOutput()
-	state = strings.TrimSpace(string(out))
+	out, err := runCmdTimeout(2*time.Second, "systemctl", "is-active", unit)
+	state = strings.TrimSpace(out)
 	if state == "" {
-		state = "unknown"
+		if err != nil {
+			state = "unknown"
+		} else {
+			state = "unknown"
+		}
 	}
-	if err == nil && state == "active" {
-		return true, state
+	// systemctl may append newline noise; take first token
+	if i := strings.IndexAny(state, "\r\n"); i >= 0 {
+		state = state[:i]
 	}
 	if state == "active" {
 		return true, state
@@ -957,7 +962,7 @@ func panelServiceSnapshot() map[string]interface{} {
 		}
 	}
 	if csqttVer == "" {
-		csqttVer = detectBinaryVersion(envOr(os.Getenv("CSQTT_BIN_PATH"), csqttDefaultBin))
+		csqttVer = binaryBuildStamp(envOr(os.Getenv("CSQTT_BIN_PATH"), csqttDefaultBin))
 	}
 	adminOK := false
 	qwdttVer := ""
@@ -970,7 +975,7 @@ func panelServiceSnapshot() map[string]interface{} {
 		}
 	}
 	if qwdttVer == "" {
-		qwdttVer = detectBinaryVersion(envOr(os.Getenv("QWDTT_BIN"), wdttDefaultBin))
+		qwdttVer = binaryBuildStamp(envOr(os.Getenv("QWDTT_BIN"), wdttDefaultBin))
 	}
 	return map[string]interface{}{
 		"qwdtt": map[string]interface{}{

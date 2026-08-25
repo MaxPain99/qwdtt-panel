@@ -373,7 +373,7 @@ pre{
 
   <main>
     <section class="pane" id="pane-monitoring">
-      <div class="grid" id="stats"></div>
+      <div class="grid" id="stats"><div class="stat"><span class="k">Статус</span><div class="v">загрузка…</div></div></div>
     </section>
 
     <section class="pane" id="pane-clients" hidden>
@@ -441,22 +441,22 @@ pre{
           <div class="svc-row">
             <div>
               <div class="svc-name">qWDTT <span class="svc-unit">wdtt.service</span></div>
-              <p id="svc-qwdtt" class="status off">…</p>
+              <p id="svc-qwdtt" class="status off">загрузка…</p>
             </div>
             <button class="btn btn-tonal btn-sm" type="button" onclick="restartSvc('qwdtt')">Перезапустить</button>
           </div>
           <div class="svc-row">
             <div>
               <div class="svc-name">CSQTT <span class="svc-unit">csqtt.service</span></div>
-              <p id="svc-csqtt" class="status off">…</p>
+              <p id="svc-csqtt" class="status off">загрузка…</p>
             </div>
             <button class="btn btn-tonal btn-sm" type="button" onclick="restartSvc('csqtt')">Перезапустить</button>
           </div>
           <div class="svc-row">
             <div>
               <div class="svc-name">Панель <span class="svc-unit">qwdtt-panel.service</span></div>
-              <p id="svc-panel" class="status off">…</p>
-              <p class="hint" style="margin:4px 0 0">Версия: <b id="ver-panel">…</b></p>
+              <p id="svc-panel" class="status off">загрузка…</p>
+              <p class="hint" style="margin:4px 0 0">Версия: <b id="ver-panel">—</b></p>
             </div>
             <button class="btn btn-tonal btn-sm" type="button" onclick="restartSvc('panel')">Перезапустить</button>
           </div>
@@ -625,6 +625,7 @@ function switchNav(name){
   });
   if (name === 'clients' && clientKind === 'csqtt') loadCsqtt();
   if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); }
+  if (name === 'monitoring') refresh().catch(()=>{});
   if (name === 'logs') logs();
 }
 
@@ -1116,8 +1117,10 @@ async function restartSvc(target){
 refresh().catch(()=>{});
 logs().catch(()=>{});
 loadCsqtt().catch(()=>{});
+loadServices().catch(()=>{});
 setInterval(() => { refresh().catch(()=>{}); }, 8000);
 setInterval(() => { if (nav === 'logs') logs().catch(()=>{}); }, 8000);
+setInterval(() => { if (nav === 'settings') loadServices().catch(()=>{}); }, 10000);
 </script>
 </body>
 </html>

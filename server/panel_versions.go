@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,7 +38,7 @@ type cachedBinVer struct {
 func panelDisplayVersion() string {
 	v := strings.TrimSpace(BuildVersion)
 	if v == "" || v == "dev" {
-		if b := detectBinaryVersion(envOr(os.Getenv("QWDTT_PANEL_BIN"), panelDefaultBin)); b != "" && b != "—" {
+		if b := binaryBuildStamp(envOr(os.Getenv("QWDTT_PANEL_BIN"), panelDefaultBin)); b != "" && b != "—" {
 			return b
 		}
 		return "dev"
@@ -60,7 +61,9 @@ func ifaceUp(name string) bool {
 	return err == nil
 }
 
-func detectBinaryVersion(path string) string {
+// binaryBuildStamp — только mtime файла. Нельзя запускать wdtt/csqtt:
+// бинарники без --version поднимают демон и вешают /api/services.
+func binaryBuildStamp(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "—"
@@ -73,62 +76,13 @@ func detectBinaryVersion(path string) string {
 	binVerMu.Unlock()
 
 	val := "—"
-	st, err := os.Stat(path)
-	if err != nil || st.IsDir() {
-		binVerMu.Lock()
-		binVerCache[path] = cachedBinVer{at: time.Now(), val: val}
-		binVerMu.Unlock()
-		return val
+	if st, err := os.Stat(path); err == nil && !st.IsDir() {
+		val = "сборка " + st.ModTime().Local().Format("2006-01-02 15:04")
 	}
-	val = "сборка " + st.ModTime().Local().Format("2006-01-02 15:04")
-	for _, args := range [][]string{
-		{"--version"},
-		{"-version"},
-		{"version"},
-		{"-V"},
-	} {
-		out, runErr := exec.Command(path, args...).CombinedOutput()
-		line := firstNonEmptyLine(string(out))
-		if line == "" || looksLikeUsage(line) {
-			continue
-		}
-		if runErr == nil || looksLikeVersionLine(line) {
-			val = truncateVersion(line)
-			break
-		}
-	}
-
 	binVerMu.Lock()
 	binVerCache[path] = cachedBinVer{at: time.Now(), val: val}
 	binVerMu.Unlock()
 	return val
-}
-
-func firstNonEmptyLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			return line
-		}
-	}
-	return ""
-}
-
-func looksLikeUsage(s string) bool {
-	l := strings.ToLower(s)
-	return strings.HasPrefix(l, "usage") ||
-		strings.HasPrefix(l, "flag provided") ||
-		strings.Contains(l, "unknown flag") ||
-		strings.Contains(l, "unknown command")
-}
-
-func looksLikeVersionLine(s string) bool {
-	l := strings.ToLower(s)
-	return strings.Contains(l, "version") ||
-		strings.Contains(l, "v0.") ||
-		strings.Contains(l, "v1.") ||
-		strings.Contains(l, "csqtt") ||
-		strings.Contains(l, "wdtt")
 }
 
 func truncateVersion(s string) string {
@@ -164,4 +118,12 @@ func invalidateBinaryVersionCache() {
 	binVerMu.Lock()
 	binVerCache = map[string]cachedBinVer{}
 	binVerMu.Unlock()
+}
+
+func runCmdTimeout(timeout time.Duration, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	out, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(out)), err
 }
