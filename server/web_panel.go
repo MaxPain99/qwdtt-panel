@@ -644,10 +644,11 @@ func handlePanelClientsViaAdmin(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	_, qwdtt := panelClientLink(view.Password, view.VkHash)
+	wdtt, qwdtt := panelClientLink(view.Password, view.VkHash)
 	writePanelJSON(w, map[string]string{
 		"password":   view.Password,
 		"qwdtt_link": qwdtt,
+		"wdtt_link":  wdtt,
 		"label":      view.Label,
 	})
 }
@@ -818,10 +819,11 @@ func handlePanelClients(w http.ResponseWriter, r *http.Request) {
 	}
 	dbMutex.Unlock()
 	log.Printf("[WEB] создан клиент %s (%s)", label, maskPassword(newPass))
-	_, qwdtt := panelClientLink(newPass, vkHash)
+	wdtt, qwdtt := panelClientLink(newPass, vkHash)
 	writePanelJSON(w, map[string]string{
 		"password":   newPass,
 		"qwdtt_link": qwdtt,
+		"wdtt_link":  wdtt,
 		"label":      label,
 	})
 }

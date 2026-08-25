@@ -105,6 +105,7 @@ html[data-theme="dark"] .expiry-soon{color:#fbbf24}
   border-radius:var(--md-shape-sm);background:var(--md-surface-container-low);
 }
 .qr-modal canvas,.qr-modal img{max-width:100%;height:auto;margin:0 auto;display:block}
+.qr-modal #qr-body{max-height:min(70vh,640px);overflow:auto;padding:4px 0}
 
 .app-bar{
   position:sticky;top:0;z-index:30;height:var(--appbar-h);
@@ -719,8 +720,7 @@ pre{
       <div class="created-box">
         <span class="off">Ссылка</span>
         <code id="created-link"></code>
-        <button class="btn btn-tonal btn-sm" type="button" onclick="copyCreated('link', this)">Копировать</button>
-        <button class="btn btn-ghost btn-sm" type="button" onclick="showQR(createdLink)">QR</button>
+        <button class="btn btn-tonal btn-sm" type="button" onclick="showCreatedQR()">QR / ссылки</button>
       </div>
       <div class="modal-actions"><button class="btn" type="button" onclick="closeCreate()">Готово</button></div>
     </div>
@@ -729,13 +729,8 @@ pre{
 
 <div id="qr-modal" class="modal" hidden onclick="if(event.target===this)closeQR()">
   <div class="modal-card qr-modal" role="dialog">
-    <div class="modal-head"><span>QR-код</span><button class="btn btn-ghost btn-sm" type="button" onclick="closeQR()">Закрыть</button></div>
-    <div id="qr-canvas"></div>
-    <p class="hint" id="qr-text" style="word-break:break-all;margin-top:12px"></p>
-    <div class="row" style="margin-top:12px;justify-content:center;flex-wrap:wrap;gap:8px">
-      <button class="btn btn-tonal btn-sm" type="button" id="qr-copy-btn" onclick="copyQRLink(this)">Копировать ссылку</button>
-      <button class="btn btn-ghost btn-sm" type="button" id="qr-copy-wdtt" hidden onclick="copyQRWdtt(this)">Копировать wdtt://</button>
-    </div>
+    <div class="modal-head"><span>Ссылки и QR</span><button class="btn btn-ghost btn-sm" type="button" onclick="closeQR()">Закрыть</button></div>
+    <div id="qr-body"></div>
   </div>
 </div>
 
@@ -746,8 +741,7 @@ let clientRows = [];
 let csqttRows = [];
 let createdPass = '';
 let createdLink = '';
-let qrCurrentLink = '';
-let qrCurrentWdtt = '';
+let createdWdttLink = '';
 let clientKind = 'qwdtt';
 let nav = 'monitoring';
 let editMode = false;
@@ -1045,7 +1039,7 @@ function renderClientCard(c, i, kind){
     ${devicesHtml}
     ${csqttDevHtml}
     <div class="client-actions">
-      ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="showQRLink(${i},'${linkKey}','${kind}')">QR</button>`}
+      ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="showQRLink(${i},'${kind}')">QR</button>`}
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${editFn}">Редактировать</button>`}
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${toggleFn}">${active?'Выключить':'Включить'}</button>`}
       ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="resetTraffic(${i},'${kind}')">Сброс трафика</button>`}
@@ -1136,37 +1130,50 @@ function paintSocksBanner(s){
     el.textContent = '';
   }
 }
-function showQR(text, wdttLink){
+function qrBlock(title, text, copyLabel){
   text = String(text||'');
-  qrCurrentLink = text;
-  qrCurrentWdtt = String(wdttLink||'');
-  document.getElementById('qr-text').textContent = text;
-  const box = document.getElementById('qr-canvas');
-  box.innerHTML = '';
-  if (text) {
-    const img = document.createElement('img');
-    img.alt = 'QR';
-    img.width = 240;
-    img.height = 240;
-    img.src = '/api/qr?text=' + encodeURIComponent(text);
-    box.appendChild(img);
+  if (!text) return '';
+  const safe = JSON.stringify(text);
+  return `<div class="qr-block" style="margin-bottom:20px;text-align:center">
+    <div class="field-k" style="margin-bottom:8px">${esc(title)}</div>
+    <img alt="QR" width="220" height="220" src="/api/qr?text=${encodeURIComponent(text)}" style="display:block;margin:0 auto">
+    <p class="hint" style="word-break:break-all;margin:10px 0">${esc(text)}</p>
+    <button class="btn btn-tonal btn-sm" type="button" onclick='copyText(${safe}).then(ok=>flashBtn(this,ok))'>${esc(copyLabel)}</button>
+  </div>`;
+}
+function showQR(primaryLink, wdttLink){
+  const body = document.getElementById('qr-body');
+  if (!body) return;
+  const primary = String(primaryLink||'');
+  const wdtt = String(wdttLink||'');
+  let html = '';
+  if (primary.startsWith('csqtt://')) {
+    html += qrBlock('CSQTT', primary, 'Копировать ссылку');
+  } else if (primary) {
+    html += qrBlock('qWDTT · qwdtt://', primary, 'Копировать qwdtt://');
   }
-  const wdttBtn = document.getElementById('qr-copy-wdtt');
-  if (wdttBtn) wdttBtn.hidden = !qrCurrentWdtt;
+  if (wdtt) {
+    html += qrBlock('qWDTT · wdtt://', wdtt, 'Копировать wdtt://');
+  }
+  if (!html) html = '<p class="hint">Нет ссылки</p>';
+  body.innerHTML = html;
   document.getElementById('qr-modal').hidden = false;
 }
-function showQRLink(i, key, kind){
+function showQRLink(i, kind){
+  kind = kind === 'csqtt' ? 'csqtt' : 'qwdtt';
   const rows = kind === 'csqtt' ? csqttRows : clientRows;
   const c = rows[i];
-  showQR((c && c[key]) || '', (kind === 'qwdtt' && c && c.wdtt_link) || '');
+  if (!c) return;
+  if (kind === 'csqtt') {
+    showQR(c.csqtt_link || '', '');
+  } else {
+    showQR(c.qwdtt_link || '', c.wdtt_link || '');
+  }
+}
+function showCreatedQR(){
+  showQR(createdLink, createdWdttLink);
 }
 function closeQR(){ document.getElementById('qr-modal').hidden = true; }
-function copyQRLink(btn){
-  copyText(qrCurrentLink).then(ok => flashBtn(btn, ok));
-}
-function copyQRWdtt(btn){
-  copyText(qrCurrentWdtt).then(ok => flashBtn(btn, ok));
-}
 
 function copyField(i, key, btn){
   copyText((clientRows[i] && clientRows[i][key]) || '').then(ok => flashBtn(btn, ok));
@@ -1305,6 +1312,7 @@ async function create(e){
     const created = await api(path, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
     createdPass = created.password || '';
     createdLink = created.csqtt_link || created.qwdtt_link || '';
+    createdWdttLink = created.wdtt_link || '';
     document.getElementById('created-pass').textContent = createdPass;
     document.getElementById('created-link').textContent = createdLink;
     e.target.hidden = true;
