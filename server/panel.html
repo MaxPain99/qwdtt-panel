@@ -1466,15 +1466,17 @@ async function loadCsqtt(){
   try {
     const d = await api('/api/csqtt');
     if (d.connected) {
-      st.className = 'status on';
-      st.textContent = d.iface_up ? 'CSQTT · csqtt1' : 'CSQTT';
+      st.hidden = true;
+      st.textContent = '';
       await loadCsqttClients();
     } else {
+      st.hidden = false;
       st.className = 'status ' + (d.error ? 'bad' : 'off');
       st.textContent = d.error || 'CSQTT недоступен';
       document.getElementById('csqtt-clients').innerHTML = '';
     }
   } catch (ex) {
+    st.hidden = false;
     st.className = 'status bad';
     st.textContent = ex.message || ex;
   }
