@@ -565,7 +565,7 @@ pre{
         <h3>TLS сертификат</h3>
         <p id="tls-info" class="hint">загрузка…</p>
         <form id="tls-paths-form" onsubmit="return saveTLSPaths(event)">
-          <p class="hint">Как в 3x-ui: укажите абсолютные пути к файлам на сервере (например Let's Encrypt live).</p>
+          <p class="hint">Пути к файлам сертификата и ключа на этом сервере. Панель будет читать их напрямую (удобно для Let's Encrypt).</p>
           <div class="field"><label>Certificate File Path</label><input name="cert_file" id="tls-cert-file" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem"></div>
           <div class="field"><label>Key File Path</label><input name="key_file" id="tls-key-file" placeholder="/etc/letsencrypt/live/example.com/privkey.pem"></div>
           <div class="row">
