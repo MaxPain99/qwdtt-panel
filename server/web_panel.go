@@ -128,7 +128,6 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	panelStoreMu.Unlock()
 	initPanelLogging(configDir, *st.LoggingActive)
 	_ = persistPanelStore()
-	panelApplyCsqttSettings()
 	startPanelBackgroundTasks()
 
 	certPath, keyPath := resolvePanelTLSPaths()
@@ -170,7 +169,6 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/qr", handlePanelQR)
 	mux.HandleFunc("/api/tls", handlePanelTLS)
 	mux.HandleFunc("/api/tls/renew", handlePanelTLSRenew)
-	mux.HandleFunc("/api/csqtt/settings", handlePanelCsqttSettings)
 	mux.HandleFunc("/api/journal", handlePanelJournal)
 	mux.HandleFunc("/api/logs", handlePanelLogs)
 	mux.HandleFunc("/api/update-log", handlePanelUpdateLog)

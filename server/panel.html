@@ -616,14 +616,7 @@ pre{
         <p id="csqtt-settings-status" class="status off"></p>
         <p class="hint">Версия: <b id="ver-csqtt">…</b></p>
         <p class="hint">TUN: <b id="tun-csqtt">10.66.67.0/24</b> · iface <b id="iface-csqtt">csqtt1</b></p>
-        <form id="csqtt-creds-form" onsubmit="return saveCsqttCreds(event)" style="margin-top:12px">
-          <div class="form-row">
-            <div class="field"><label>API URL</label><input name="csqtt_url" id="csqtt-url" placeholder="http://127.0.0.1:46002"></div>
-            <div class="field"><label>Логин</label><input name="csqtt_user" id="csqtt-user"></div>
-            <div class="field"><label>Пароль</label><input name="csqtt_pass" type="password" placeholder="оставьте пустым, чтобы не менять"></div>
-          </div>
-          <button class="btn btn-sm" type="submit">Сохранить подключение</button>
-        </form>
+        <p class="hint">API CSQTT подключается автоматически из <b>/etc/csqtt/csqtt.env</b> (CSQTT_WEB_USER / CSQTT_WEB_PASS).</p>
         <div class="row">
           <button class="btn btn-tonal btn-sm" type="button" onclick="loadCsqttSettings()">Обновить</button>
         </div>
@@ -1338,16 +1331,6 @@ async function loadAudit(){
     pre.textContent = d.text || '—';
   } catch (ex) { pre.textContent = ex.message || ex; }
 }
-async function saveCsqttCreds(e){
-  e.preventDefault();
-  try {
-    const f = new FormData(e.target);
-    await api('/api/csqtt/settings', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams(f)});
-    notify('CSQTT настройки сохранены', true);
-    await loadCsqttSettings();
-  } catch (ex) { notify(ex.message || ex, false); }
-  return false;
-}
 async function del(i){
   const p = clientRows[i] && clientRows[i].password;
   if (!p || !confirm('Удалить клиента?')) return;
@@ -1500,11 +1483,6 @@ function copyCsqtt(i, key, btn){
 async function loadCsqttSettings(){
   const st = document.getElementById('csqtt-settings-status');
   try {
-    const creds = await api('/api/csqtt/settings').catch(()=>({}));
-    const urlEl = document.getElementById('csqtt-url');
-    const userEl = document.getElementById('csqtt-user');
-    if (urlEl && creds.csqtt_url) urlEl.value = creds.csqtt_url;
-    if (userEl && creds.csqtt_user) userEl.value = creds.csqtt_user;
     const d = await api('/api/csqtt');
     const svc = await api('/api/services').catch(()=>null);
     if (svc) paintServices(svc);
