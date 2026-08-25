@@ -431,6 +431,20 @@ pre{
         </select>
         <button class="btn btn-ghost btn-sm" type="button" onclick="exportClients('json')">Экспорт JSON</button>
         <button class="btn btn-ghost btn-sm" type="button" onclick="exportClients('csv')">Экспорт CSV</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('import-file').click()">Импорт</button>
+        <input id="import-file" type="file" accept=".json,.csv,.txt" hidden onchange="importClients(event)">
+      </div>
+      <div class="client-bulk row" id="client-bulk" hidden>
+        <span id="bulk-count" class="hint">0 выбрано</span>
+        <button class="btn btn-tonal btn-sm" type="button" onclick="bulkAction('activate')">Включить</button>
+        <button class="btn btn-tonal btn-sm" type="button" onclick="bulkAction('deactivate')">Выключить</button>
+        <button class="btn btn-bad btn-sm" type="button" onclick="bulkAction('delete')">Удалить</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="clearSelection()">Снять выбор</button>
+      </div>
+      <div class="row" id="client-pager" hidden>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="changeClientPage(-1)">←</button>
+        <span id="client-page-label" class="hint">1 / 1</span>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="changeClientPage(1)">→</button>
       </div>
       <div id="clients-qwdtt">
         <p class="hint">TUN qWDTT: <b>10.66.66.0/24</b> · CSQTT: <b>10.66.67.0/24</b></p>
@@ -562,7 +576,64 @@ pre{
           <p class="hint">Let's Encrypt standalone — порт 80 должен быть свободен.</p>
           <button class="btn btn-tonal btn-sm" type="submit">Let's Encrypt</button>
         </form>
+        <div class="row" style="margin-top:8px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="renewTLS()">Обновить certbot renew</button>
+        </div>
         <p id="tls-err" class="status off"></p>
+      </div>
+
+      <div class="panel">
+        <h3>Уведомления</h3>
+        <form id="notify-form" onsubmit="return saveNotify(event)">
+          <div class="form-row">
+            <div class="field"><label>Telegram token</label><input name="telegram_token" type="password" placeholder="оставьте пустым, чтобы не менять"></div>
+            <div class="field"><label>Telegram chat ID</label><input name="telegram_chat"></div>
+          </div>
+          <div class="form-row">
+            <div class="field"><label>Email to</label><input name="email_to"></div>
+            <div class="field"><label>SMTP server</label><input name="smtp_server" placeholder="host:25"></div>
+          </div>
+          <div class="field"><label>Webhook URL</label><input name="webhook_url"></div>
+          <div class="row">
+            <label class="check"><input type="checkbox" name="on_health_fail" value="1"> Проблемы health</label>
+            <label class="check"><input type="checkbox" name="on_client_expiry" value="1"> Истечение клиентов</label>
+            <label class="check"><input type="checkbox" name="on_socks_bad" value="1"> SOCKS health</label>
+          </div>
+          <button class="btn btn-sm" type="submit">Сохранить</button>
+        </form>
+        <p id="notify-err" class="status off"></p>
+      </div>
+
+      <div class="panel">
+        <h3>2FA (TOTP)</h3>
+        <p id="twofa-status" class="hint">загрузка…</p>
+        <div class="row">
+          <button class="btn btn-tonal btn-sm" type="button" onclick="setup2FA()">Настроить</button>
+          <input id="twofa-code" placeholder="код из приложения" style="max-width:160px">
+          <button class="btn btn-sm" type="button" onclick="enable2FA()">Включить</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="disable2FA()">Выключить</button>
+        </div>
+        <p id="twofa-secret" class="hint" style="word-break:break-all"></p>
+      </div>
+
+      <div class="panel">
+        <h3>Аудит</h3>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="loadAudit()">Обновить</button>
+        <pre id="audit-log" class="update-log">—</pre>
+      </div>
+
+      <div class="panel">
+        <h3>SOCKS профили</h3>
+        <div id="socks-profiles" class="hint">загрузка…</div>
+        <form id="socks-profile-form" onsubmit="return addSocksProfile(event)" style="margin-top:12px">
+          <div class="form-row">
+            <div class="field"><label>Хост</label><input name="host" value="127.0.0.1"></div>
+            <div class="field"><label>Порт</label><input name="port" type="number" value="1080"></div>
+            <div class="field"><label>Логин</label><input name="username"></div>
+            <div class="field"><label>Пароль</label><input name="password" type="password"></div>
+          </div>
+          <button class="btn btn-sm" type="submit">Добавить профиль</button>
+        </form>
       </div>
 
       <div class="toolbar">
@@ -588,6 +659,14 @@ pre{
         <p id="csqtt-settings-status" class="status off"></p>
         <p class="hint">Версия: <b id="ver-csqtt">…</b></p>
         <p class="hint">TUN: <b id="tun-csqtt">10.66.67.0/24</b> · iface <b id="iface-csqtt">csqtt1</b></p>
+        <form id="csqtt-creds-form" onsubmit="return saveCsqttCreds(event)" style="margin-top:12px">
+          <div class="form-row">
+            <div class="field"><label>API URL</label><input name="csqtt_url" id="csqtt-url" placeholder="http://127.0.0.1:46002"></div>
+            <div class="field"><label>Логин</label><input name="csqtt_user" id="csqtt-user"></div>
+            <div class="field"><label>Пароль</label><input name="csqtt_pass" type="password" placeholder="оставьте пустым, чтобы не менять"></div>
+          </div>
+          <button class="btn btn-sm" type="submit">Сохранить подключение</button>
+        </form>
         <div class="row">
           <button class="btn btn-tonal btn-sm" type="button" onclick="loadCsqttSettings()">Обновить</button>
         </div>
@@ -672,7 +751,6 @@ pre{
 
 <div id="toast-wrap" class="toast-wrap" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script>
 let clientRows = [];
 let csqttRows = [];
@@ -684,6 +762,9 @@ let editMode = false;
 let editPassword = '';
 let lastStatus = null;
 let logSource = 'panel';
+let selectedClients = new Set();
+let clientPage = 0;
+const CLIENT_PAGE_SIZE = 12;
 
 function toast(msg, kind){
   kind = kind || 'info';
@@ -758,13 +839,15 @@ function switchNav(name){
     document.getElementById('nav-'+id).classList.toggle('active', id === name);
   });
   if (name === 'clients' && clientKind === 'csqtt') loadCsqtt();
-  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); }
+  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); loadNotify(); load2FA(); loadAudit(); loadSocksProfiles(); }
   if (name === 'monitoring') refresh().catch(()=>{});
   if (name === 'logs') { switchLogSource(); }
 }
 
 function showClientTab(kind){
   clientKind = kind === 'csqtt' ? 'csqtt' : 'qwdtt';
+  clientPage = 0;
+  clearSelection();
   document.getElementById('clients-qwdtt').hidden = clientKind !== 'qwdtt';
   document.getElementById('clients-csqtt').hidden = clientKind !== 'csqtt';
   document.getElementById('tab-qwdtt').classList.toggle('active', clientKind === 'qwdtt');
@@ -804,16 +887,90 @@ function filterSortClients(rows){
   });
   return list;
 }
+function paginateClients(list){
+  const pages = Math.max(1, Math.ceil(list.length / CLIENT_PAGE_SIZE));
+  if (clientPage >= pages) clientPage = pages - 1;
+  if (clientPage < 0) clientPage = 0;
+  const start = clientPage * CLIENT_PAGE_SIZE;
+  return { slice: list.slice(start, start + CLIENT_PAGE_SIZE), pages, page: clientPage + 1 };
+}
+function updatePager(pages, page){
+  const el = document.getElementById('client-pager');
+  const label = document.getElementById('client-page-label');
+  if (!el) return;
+  el.hidden = pages <= 1;
+  if (label) label.textContent = page + ' / ' + pages;
+}
+function changeClientPage(delta){
+  clientPage += delta;
+  renderClientLists();
+}
+function clientKey(c, kind){ return kind + ':' + (c.password || c.label || ''); }
+function toggleSelect(key, on){
+  if (on) selectedClients.add(key); else selectedClients.delete(key);
+  const bulk = document.getElementById('client-bulk');
+  const cnt = document.getElementById('bulk-count');
+  if (bulk) bulk.hidden = selectedClients.size === 0;
+  if (cnt) cnt.textContent = selectedClients.size + ' выбрано';
+}
+function clearSelection(){
+  selectedClients.clear();
+  toggleSelect('', false);
+  renderClientLists();
+}
+function selectedPasswords(kind){
+  const prefix = kind + ':';
+  return [...selectedClients].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length));
+}
+async function bulkAction(action){
+  const kind = clientKind;
+  const passes = selectedPasswords(kind);
+  if (!passes.length) return;
+  if (!confirm('Применить «'+action+'» к '+passes.length+' клиентам?')) return;
+  try {
+    const d = await api('/api/clients/bulk', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({action, kind, passwords: passes.join(',')})
+    });
+    notify('Готово: '+d.ok+' / '+d.total, true);
+    clearSelection();
+    await refresh();
+    if (kind === 'csqtt') await loadCsqtt();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function importClients(ev){
+  const file = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const format = file.name.toLowerCase().endsWith('.csv') ? 'csv' : 'json';
+    const kind = clientKind;
+    const d = await api('/api/clients/import', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({kind, format, data: text})
+    });
+    notify('Импорт: '+d.created+' / '+d.total, true);
+    await refresh();
+    if (kind === 'csqtt') await loadCsqtt();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
 function renderClientLists(){
   const qList = filterSortClients(clientRows);
   const cList = filterSortClients(csqttRows);
-  document.getElementById('clients').innerHTML = qList.length
-    ? qList.map(c => renderClientCard(c, clientRows.indexOf(c), 'qwdtt')).join('')
+  const qPage = paginateClients(qList);
+  const cPage = paginateClients(cList);
+  if (clientKind === 'qwdtt') updatePager(qPage.pages, qPage.page);
+  else updatePager(cPage.pages, cPage.page);
+  document.getElementById('clients').innerHTML = qPage.slice.length
+    ? qPage.slice.map(c => renderClientCard(c, clientRows.indexOf(c), 'qwdtt')).join('')
     : '<p class="hint">Нет клиентов qWDTT</p>';
   const csEl = document.getElementById('csqtt-clients');
   if (csEl) {
-    csEl.innerHTML = cList.length
-      ? cList.map(c => renderClientCard(c, csqttRows.indexOf(c), 'csqtt')).join('')
+    csEl.innerHTML = cPage.slice.length
+      ? cPage.slice.map(c => renderClientCard(c, csqttRows.indexOf(c), 'csqtt')).join('')
       : '<p class="hint">Нет клиентов CSQTT</p>';
   }
 }
@@ -847,6 +1004,8 @@ function renderClientCard(c, i, kind){
   const toggleFn = kind === 'csqtt' ? `toggleCsqtt(${i})` : `toggleClient(${i})`;
   const copyFn = kind === 'csqtt' ? 'copyCsqtt' : 'copyField';
   const maxDev = c.max_devices || 1;
+  const selKey = clientKey(c, kind);
+  const checked = selectedClients.has(selKey) ? ' checked' : '';
   let devicesHtml = '';
   if (kind === 'qwdtt' && !c.owner) {
     const ids = Array.isArray(c.device_ids) ? c.device_ids.filter(Boolean) : [];
@@ -860,8 +1019,16 @@ function renderClientCard(c, i, kind){
         }).join('') + `</div></div>`;
     }
   }
+  let csqttDevHtml = '';
+  if (kind === 'csqtt' && !c.owner && c.device_id) {
+    const id = String(c.device_id);
+    const short = id.length > 18 ? id.slice(0,8)+'…'+id.slice(-6) : id;
+    csqttDevHtml = `<div><div class="field-k">Устройство</div><div class="device-row"><span title="${esc(id)}">${esc(short)}</span>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="unbindCsqtt(${i})">Отвязать</button></div></div>`;
+  }
   return `<article class="client-card">
     <div class="client-card-head">
+      ${c.owner ? '' : `<label class="check"><input type="checkbox"${checked} onchange="toggleSelect(${JSON.stringify(selKey)}, this.checked)"></label>`}
       <div class="client-name">${esc(name)}</div>
       <span class="badge ${active?'on':'off'}">${active?'Активно':'Выкл'}</span>
     </div>
@@ -884,12 +1051,14 @@ function renderClientCard(c, i, kind){
       <span class="flow">${flows}${kind==='qwdtt' ? '/'+maxDev : ''}</span>
     </div>
     ${devicesHtml}
+    ${csqttDevHtml}
     <div class="client-actions">
       <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'${linkKey}',this)">копировать ссылку</button>
       ${kind==='qwdtt' && c.wdtt_link ? `<button class="btn btn-ghost btn-sm" type="button" onclick="copyField(${i},'wdtt_link',this)">wdtt://</button>` : ''}
       ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="showQRLink(${i},'${linkKey}','${kind}')">QR</button>`}
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${editFn}">Редактировать</button>`}
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${toggleFn}">${active?'Выключить':'Включить'}</button>`}
+      ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="resetTraffic(${i},'${kind}')">Сброс трафика</button>`}
       ${c.owner ? '' : `<button class="btn btn-bad btn-sm" type="button" onclick="${delFn}">Удалить</button>`}
     </div>
   </article>`;
@@ -982,12 +1151,13 @@ function showQR(text){
   document.getElementById('qr-text').textContent = text;
   const box = document.getElementById('qr-canvas');
   box.innerHTML = '';
-  if (window.QRCode && text) {
-    const canvas = document.createElement('canvas');
-    box.appendChild(canvas);
-    QRCode.toCanvas(canvas, text, {width:240, margin:1}, err => {
-      if (err) box.textContent = 'QR: ' + err.message;
-    });
+  if (text) {
+    const img = document.createElement('img');
+    img.alt = 'QR';
+    img.width = 240;
+    img.height = 240;
+    img.src = '/api/qr?text=' + encodeURIComponent(text);
+    box.appendChild(img);
   }
   document.getElementById('qr-modal').hidden = false;
 }
@@ -1147,6 +1317,163 @@ async function create(e){
   }
   return false;
 }
+async function resetTraffic(i, kind){
+  const rows = kind === 'csqtt' ? csqttRows : clientRows;
+  const c = rows[i];
+  if (!c || c.owner || !confirm('Обнулить трафик?')) return;
+  try {
+    await api('/api/clients/reset-traffic', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({password:c.password, kind})
+    });
+    notify('Трафик сброшен', true);
+    if (kind === 'csqtt') await loadCsqtt(); else await refresh();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function unbindCsqtt(i){
+  const c = csqttRows[i];
+  if (!c || !confirm('Отвязать устройство CSQTT?')) return;
+  try {
+    await api('/api/csqtt/unbind', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({password:c.password})
+    });
+    await loadCsqtt();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function renewTLS(){
+  if (!confirm('Запустить certbot renew?')) return;
+  try {
+    const d = await api('/api/tls/renew', {method:'POST'});
+    notify(d.message || 'renew OK', true);
+    await loadTLS();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function loadNotify(){
+  const form = document.getElementById('notify-form');
+  if (!form) return;
+  try {
+    const d = await api('/api/account/notify');
+    form.telegram_chat.value = d.telegram_chat || '';
+    form.email_to.value = d.email_to || '';
+    form.email_from.value = d.email_from || '';
+    form.smtp_server.value = d.smtp_server || '';
+    form.webhook_url.value = d.webhook_url || '';
+    form.on_health_fail.checked = !!d.on_health_fail;
+    form.on_client_expiry.checked = !!d.on_client_expiry;
+    form.on_socks_bad.checked = !!d.on_socks_bad;
+  } catch (ex) {}
+}
+async function saveNotify(e){
+  e.preventDefault();
+  const err = document.getElementById('notify-err');
+  try {
+    const f = new FormData(e.target);
+    const body = new URLSearchParams(f);
+    ['on_health_fail','on_client_expiry','on_socks_bad'].forEach(k => {
+      if (!f.get(k)) body.set(k, '0'); else body.set(k, '1');
+    });
+    await api('/api/account/notify', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+    notify('Уведомления сохранены', true);
+  } catch (ex) {
+    if (err) { err.className='status bad'; err.textContent = ex.message || ex; }
+  }
+  return false;
+}
+async function load2FA(){
+  const st = document.getElementById('twofa-status');
+  try {
+    const d = await api('/api/account/2fa');
+    if (st) st.textContent = d.enabled ? '2FA включена' : (d.pending ? 'ожидает подтверждения' : '2FA выключена');
+  } catch (ex) { if (st) st.textContent = ex.message || ex; }
+}
+async function setup2FA(){
+  try {
+    const d = await api('/api/account/2fa', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'setup'})});
+    const el = document.getElementById('twofa-secret');
+    if (el) el.textContent = 'Secret: ' + (d.secret || '') + (d.uri ? '\n' + d.uri : '');
+    await load2FA();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function enable2FA(){
+  const code = document.getElementById('twofa-code')?.value || '';
+  try {
+    await api('/api/account/2fa', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'enable', code})});
+    notify('2FA включена', true);
+    await load2FA();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function disable2FA(){
+  if (!confirm('Выключить 2FA?')) return;
+  try {
+    await api('/api/account/2fa', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'disable'})});
+    notify('2FA выключена', true);
+    document.getElementById('twofa-secret').textContent = '';
+    await load2FA();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function loadAudit(){
+  const pre = document.getElementById('audit-log');
+  if (!pre) return;
+  try {
+    const d = await api('/api/audit?lines=200');
+    pre.textContent = d.text || '—';
+  } catch (ex) { pre.textContent = ex.message || ex; }
+}
+async function loadSocksProfiles(){
+  const el = document.getElementById('socks-profiles');
+  if (!el) return;
+  try {
+    const d = await api('/api/socks/profiles');
+    const list = d.profiles || [];
+    if (!list.length) { el.textContent = 'Нет сохранённых профилей'; return; }
+    el.innerHTML = list.map((p, i) => `<div class="row" style="margin:6px 0">
+      <span>${esc(p.host)}:${p.port||1080} ${d.active_id===String(i)?'· активен':''}</span>
+      <button class="btn btn-tonal btn-sm" type="button" onclick="activateSocksProfile(${i})">Активировать</button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="deleteSocksProfile(${i})">Удалить</button>
+    </div>`).join('');
+  } catch (ex) { el.textContent = ex.message || ex; }
+}
+async function addSocksProfile(e){
+  e.preventDefault();
+  try {
+    const f = new FormData(e.target);
+    const body = new URLSearchParams(f);
+    body.set('action', 'add');
+    await api('/api/socks/profiles', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+    e.target.reset();
+    await loadSocksProfiles();
+    notify('Профиль добавлен', true);
+  } catch (ex) { notify(ex.message || ex, false); }
+  return false;
+}
+async function activateSocksProfile(i){
+  try {
+    await api('/api/socks/profiles', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'activate', index:String(i)})});
+    await loadSocksProfiles();
+    await loadSocks();
+    notify('Профиль активирован', true);
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function deleteSocksProfile(i){
+  if (!confirm('Удалить профиль?')) return;
+  try {
+    await api('/api/socks/profiles', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'delete', index:String(i)})});
+    await loadSocksProfiles();
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function saveCsqttCreds(e){
+  e.preventDefault();
+  try {
+    const f = new FormData(e.target);
+    await api('/api/csqtt/settings', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams(f)});
+    notify('CSQTT настройки сохранены', true);
+    await loadCsqttSettings();
+  } catch (ex) { notify(ex.message || ex, false); }
+  return false;
+}
 async function del(i){
   const p = clientRows[i] && clientRows[i].password;
   if (!p || !confirm('Удалить клиента?')) return;
@@ -1286,6 +1613,11 @@ function copyCsqtt(i, key, btn){
 async function loadCsqttSettings(){
   const st = document.getElementById('csqtt-settings-status');
   try {
+    const creds = await api('/api/csqtt/settings').catch(()=>({}));
+    const urlEl = document.getElementById('csqtt-url');
+    const userEl = document.getElementById('csqtt-user');
+    if (urlEl && creds.csqtt_url) urlEl.value = creds.csqtt_url;
+    if (userEl && creds.csqtt_user) userEl.value = creds.csqtt_user;
     const d = await api('/api/csqtt');
     const svc = await api('/api/services').catch(()=>null);
     if (svc) paintServices(svc);

@@ -516,6 +516,41 @@ func disconnectPasswordDevicesLocked(entry *PasswordEntry) {
 	}
 }
 
+// POST /admin/passwords/reset-traffic — обнулить учётный трафик пароля
+func handleAdminResetPasswordTraffic(w http.ResponseWriter, r *http.Request) {
+	setAdminCORSHeaders(w, "POST")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !adminAuthorized(r) {
+		writeAdminError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeAdminError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	pass := r.FormValue("password")
+	if pass == "" {
+		writeAdminError(w, http.StatusBadRequest, "password is required")
+		return
+	}
+	dbMutex.Lock()
+	entry, exists := db.Passwords[pass]
+	if !exists || entry == nil {
+		dbMutex.Unlock()
+		writeAdminError(w, http.StatusNotFound, "password not found")
+		return
+	}
+	entry.UpBytes = 0
+	entry.DownBytes = 0
+	saveDB()
+	view := toAdminPasswordView(pass, entry)
+	dbMutex.Unlock()
+	writeAdminJSON(w, http.StatusOK, view)
+}
+
 // POST /admin/passwords/unbind-device — открепить одно устройство от пароля
 // (снимает WG-пир и слот занятого устройства, не трогая сам пароль).
 // Form: password (required), device_id (required).
@@ -581,6 +616,7 @@ func registerAdminAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/passwords/delete", handleAdminDeletePassword)
 	mux.HandleFunc("/admin/passwords/update", handleAdminUpdatePassword)
 	mux.HandleFunc("/admin/passwords/unbind-device", handleAdminUnbindDevice)
+	mux.HandleFunc("/admin/passwords/reset-traffic", handleAdminResetPasswordTraffic)
 }
 
 func handleAdminStatus(w http.ResponseWriter, r *http.Request) {

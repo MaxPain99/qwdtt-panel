@@ -352,6 +352,7 @@ func csqttListClients() ([]map[string]interface{}, error) {
 			"hashes":       hashes,
 			"expires":      exp,
 			"dtls_port":    c.DTLSPort,
+			"device_id":    c.DeviceID,
 			"csqtt_link":   csqttConnectLink(c.Password, c.DTLSPort, hashes),
 			"deactivated":  !c.Active,
 		})

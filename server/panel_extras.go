@@ -78,35 +78,7 @@ func handlePanelHealth(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusMethodNotAllowed, "method")
 		return
 	}
-	wdttOK, wdttState := panelUnitActive("wdtt")
-	csqttOK, csqttState := panelUnitActive("csqtt")
-	panelOK, panelState := panelUnitActive("qwdtt-panel")
-	socksOn, _, _, socksHealth := socksSnapshot()
-	csqttBridge := false
-	if st := csqttCachedStatus(); st != nil {
-		if v, ok := st["connected"].(bool); ok {
-			csqttBridge = v
-		}
-	}
-	wdttAdmin := false
-	if panelWdttAdminEnabled() {
-		wdttAdmin = panelAdminStatus() != nil
-	}
-	ok := panelOK && (wdttOK || wdttAdmin) && (!csqttOK || csqttBridge) && (!socksOn || socksHealth == "" || socksHealth == "ok")
-	writePanelJSON(w, map[string]interface{}{
-		"ok":           ok,
-		"wdtt":         wdttOK,
-		"wdtt_state":   wdttState,
-		"wdtt_admin":   wdttAdmin,
-		"csqtt":        csqttOK,
-		"csqtt_state":  csqttState,
-		"csqtt_bridge": csqttBridge,
-		"panel":        panelOK,
-		"panel_state":  panelState,
-		"socks_on":     socksOn,
-		"socks_health": socksHealth,
-		"uptime":       formatUptime(time.Since(serverStartTime)),
-	})
+	writePanelJSON(w, enrichHealthResponse())
 }
 
 func handlePanelJournal(w http.ResponseWriter, r *http.Request) {
@@ -320,6 +292,9 @@ func panelTLSLetsencrypt(w http.ResponseWriter, r *http.Request) {
 }
 
 func parseUpdateLogStatus(text string, modTime time.Time) string {
+	if st := readUpdateJobStatus(); st != "" {
+		return st
+	}
 	lower := strings.ToLower(text)
 	if strings.Contains(lower, "error") || strings.Contains(lower, "failed") || strings.Contains(lower, "exit code") {
 		return "error"

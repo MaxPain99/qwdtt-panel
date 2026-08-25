@@ -169,6 +169,19 @@ func panelAdminSetActive(pass string, active bool) error {
 	return nil
 }
 
+func panelAdminResetTraffic(pass string) error {
+	form := url.Values{}
+	form.Set("password", pass)
+	b, code, err := panelAdminDo(http.MethodPost, "/admin/passwords/reset-traffic", form)
+	if err != nil {
+		return err
+	}
+	if code >= 400 {
+		return fmt.Errorf("%s", strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
 func panelAdminUnbindDevice(pass, deviceID string) error {
 	form := url.Values{}
 	form.Set("password", pass)

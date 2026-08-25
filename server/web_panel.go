@@ -27,6 +27,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pquerna/otp/totp"
+
 	_ "embed"
 )
 
@@ -61,9 +63,12 @@ type panelFileStore struct {
 	SocksOn       bool           `json:"socks_on,omitempty"`
 	SocksProfiles []SocksProfile `json:"socks_profiles,omitempty"`
 	ActiveSocksID string         `json:"active_socks_id,omitempty"`
-	CsqttURL      string         `json:"csqtt_url,omitempty"`
-	CsqttUser     string         `json:"csqtt_user,omitempty"`
-	CsqttPass     string         `json:"csqtt_pass,omitempty"`
+	CsqttURL      string                `json:"csqtt_url,omitempty"`
+	CsqttUser     string                `json:"csqtt_user,omitempty"`
+	CsqttPass     string                `json:"csqtt_pass,omitempty"`
+	Notify        panelNotifyConfig   `json:"notify,omitempty"`
+	TOTPSecret    string                `json:"totp_secret,omitempty"`
+	TOTPEnabled   bool                  `json:"totp_enabled,omitempty"`
 }
 
 var (
@@ -126,6 +131,8 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	panelStoreMu.Unlock()
 	initPanelLogging(configDir, *st.LoggingActive)
 	_ = persistPanelStore()
+	panelApplyCsqttSettings()
+	startPanelBackgroundTasks()
 
 	certPath := filepath.Join(configDir, panelCertFile)
 	keyPath := filepath.Join(configDir, panelKeyFile)
@@ -138,6 +145,7 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/login", handlePanelLogin)
 	mux.HandleFunc("/logout", handlePanelLogout)
 	mux.HandleFunc("/api/health", handlePanelHealth)
+	mux.HandleFunc("/api/metrics", handlePanelMetrics)
 	mux.HandleFunc("/", handlePanelIndex)
 	mux.HandleFunc("/api/status", handlePanelStatus)
 	mux.HandleFunc("/api/clients", handlePanelClients)
@@ -147,8 +155,19 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/clients/deactivate", handlePanelDeactivateClient)
 	mux.HandleFunc("/api/clients/unbind", handlePanelUnbindDevice)
 	mux.HandleFunc("/api/clients/export", handlePanelClientsExport)
+	mux.HandleFunc("/api/clients/import", handlePanelClientsImport)
+	mux.HandleFunc("/api/clients/bulk", handlePanelClientsBulk)
+	mux.HandleFunc("/api/clients/reset-traffic", handlePanelResetTraffic)
+	mux.HandleFunc("/api/csqtt/unbind", handlePanelCsqttUnbind)
 	mux.HandleFunc("/api/account/password", handlePanelChangePassword)
+	mux.HandleFunc("/api/account/2fa", handlePanel2FA)
+	mux.HandleFunc("/api/account/notify", handlePanelNotifySettings)
+	mux.HandleFunc("/api/audit", handlePanelAudit)
+	mux.HandleFunc("/api/qr", handlePanelQR)
 	mux.HandleFunc("/api/tls", handlePanelTLS)
+	mux.HandleFunc("/api/tls/renew", handlePanelTLSRenew)
+	mux.HandleFunc("/api/csqtt/settings", handlePanelCsqttSettings)
+	mux.HandleFunc("/api/socks/profiles", handlePanelSocksProfiles)
 	mux.HandleFunc("/api/journal", handlePanelJournal)
 	mux.HandleFunc("/api/logs", handlePanelLogs)
 	mux.HandleFunc("/api/update-log", handlePanelUpdateLog)
@@ -318,11 +337,28 @@ func handlePanelLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?bad=1", http.StatusFound)
 		return
 	}
+	panelStoreMu.Lock()
+	totpEnabled := panelStore != nil && panelStore.TOTPEnabled
+	totpSecret := ""
+	if panelStore != nil {
+		totpSecret = panelStore.TOTPSecret
+	}
+	panelStoreMu.Unlock()
+	if totpEnabled {
+		code := strings.TrimSpace(r.FormValue("totp"))
+		if code == "" || !totp.Validate(code, totpSecret) {
+			recordPanelLoginFailure(host, time.Now())
+			http.Redirect(w, r, "/login?bad=1&totp=1", http.StatusFound)
+			return
+		}
+	}
 	clearPanelLoginFailure(host)
 	tok := randomPanelPass() + randomPanelPass()
 	panelSessMu.Lock()
 	panelSessions[tok] = time.Now().Add(12 * time.Hour)
 	panelSessMu.Unlock()
+	savePanelSessions()
+	panelAudit("login", user)
 	http.SetCookie(w, &http.Cookie{
 		Name:     panelCookieName,
 		Value:    tok,
@@ -340,6 +376,7 @@ func handlePanelLogout(w http.ResponseWriter, r *http.Request) {
 		panelSessMu.Lock()
 		delete(panelSessions, c.Value)
 		panelSessMu.Unlock()
+		savePanelSessions()
 	}
 	http.SetCookie(w, &http.Cookie{Name: panelCookieName, Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/login", http.StatusFound)

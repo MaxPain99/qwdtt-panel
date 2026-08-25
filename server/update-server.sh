@@ -8,6 +8,7 @@ set -euo pipefail
 readonly TARGET="${1:-all}"
 readonly MODE="${2:-source}"
 readonly LOG_FILE="/var/log/qwdtt-panel-update.log"
+readonly STATUS_FILE="/var/log/qwdtt-panel-update.status"
 readonly SRC_DIR="${QWDTT_SRC_DIR:-/opt/qwdtt-panel}"
 readonly BIN_PATH="${QWDTT_BIN:-/usr/local/bin/wdtt-server}"
 readonly PANEL_BIN_PATH="${QWDTT_PANEL_BIN:-/usr/local/bin/qwdtt-panel}"
@@ -30,6 +31,8 @@ readonly CSQTT_ENV_FILE="${CSQTT_ENV_FILE:-/etc/csqtt/csqtt.env}"
 
 mkdir -p "$(dirname "$LOG_FILE")" /usr/local/lib/qwdtt
 exec >>"$LOG_FILE" 2>&1
+echo running >"$STATUS_FILE"
+trap 'echo error >"$STATUS_FILE"' ERR
 echo "=== panel update target=${TARGET} mode=${MODE} $(date -Iseconds) pid=$$ ==="
 
 sleep 2
@@ -307,3 +310,4 @@ case "$TARGET" in
 esac
 
 echo "=== готово $(date -Iseconds) ==="
+echo success >"$STATUS_FILE"
