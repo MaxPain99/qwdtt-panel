@@ -85,6 +85,26 @@ body{
 button,input,textarea,select{font:inherit}
 a{color:var(--md-primary);text-decoration:none}
 [hidden]{display:none!important}
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px;max-width:min(420px,calc(100vw - 40px))}
+.toast{padding:12px 16px;border-radius:var(--md-shape-md);box-shadow:var(--md-elevation-3);font-size:.88rem;animation:toast-in .2s ease}
+.toast.ok{background:var(--md-success-container);color:var(--md-on-success-container)}
+.toast.bad{background:var(--md-error-container);color:var(--md-on-error-container)}
+.toast.info{background:var(--md-primary-container);color:var(--md-on-primary-container)}
+@keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.alert-banner{
+  display:flex;align-items:flex-start;gap:12px;padding:12px 16px;margin-bottom:16px;
+  border-radius:var(--md-shape-md);background:var(--md-error-container);color:var(--md-on-error-container);
+  border:1px solid color-mix(in srgb,var(--md-error) 30%,transparent);
+}
+.expiry-warn{color:var(--md-error);font-weight:600;font-size:.82rem}
+.expiry-soon{color:#b45309;font-weight:600;font-size:.82rem}
+html[data-theme="dark"] .expiry-soon{color:#fbbf24}
+.client-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.client-filters input,.client-filters select{
+  min-height:36px;padding:0 12px;border:1px solid var(--md-outline-variant);
+  border-radius:var(--md-shape-sm);background:var(--md-surface-container-low);
+}
+.qr-modal canvas,.qr-modal img{max-width:100%;height:auto;margin:0 auto;display:block}
 
 .app-bar{
   position:sticky;top:0;z-index:30;height:var(--appbar-h);
@@ -387,6 +407,7 @@ pre{
 
   <main>
     <section class="pane" id="pane-monitoring">
+      <div id="socks-banner" class="alert-banner" hidden></div>
       <div class="grid" id="stats"><div class="stat"><span class="k">Статус</span><div class="v">загрузка…</div></div></div>
     </section>
 
@@ -400,6 +421,16 @@ pre{
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
           Создать доступ
         </button>
+      </div>
+      <div class="client-filters">
+        <input id="client-search" type="search" placeholder="Поиск по имени или паролю" oninput="renderClientLists()">
+        <select id="client-sort" onchange="renderClientLists()">
+          <option value="label">По имени</option>
+          <option value="expires">По сроку</option>
+          <option value="traffic">По трафику</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="exportClients('json')">Экспорт JSON</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="exportClients('csv')">Экспорт CSV</button>
       </div>
       <div id="clients-qwdtt">
         <p class="hint">TUN qWDTT: <b>10.66.66.0/24</b> · CSQTT: <b>10.66.67.0/24</b></p>
@@ -416,6 +447,12 @@ pre{
       <div class="sec">
         <h2>Логи</h2>
         <div class="row">
+          <select id="log-source" onchange="switchLogSource()">
+            <option value="panel">Панель (runtime)</option>
+            <option value="journal">journalctl · qwdtt-panel</option>
+            <option value="journal-wdtt">journalctl · wdtt</option>
+            <option value="journal-csqtt">journalctl · csqtt</option>
+          </select>
           <button class="btn btn-tonal btn-sm" type="button" id="log-toggle" onclick="toggleLogs()">Выключить логи</button>
           <button class="btn btn-ghost btn-sm" type="button" onclick="clearLogs()">Очистить</button>
           <button class="btn btn-ghost btn-sm" type="button" onclick="logs()">Обновить</button>
@@ -480,16 +517,52 @@ pre{
 
       <div class="panel">
         <h3>Обновление с GitHub</h3>
-        <p class="hint">Отдельно: сервер qWDTT, CSQTT и панель.</p>
+        <p class="hint">Режим <b>source</b> — сборка из git. <b>app</b> — stock-бинарники (qWDTT/CSQTT).</p>
         <div class="row">
+          <label class="check"><input type="radio" name="upd-mode" value="source" checked> source</label>
+          <label class="check"><input type="radio" name="upd-mode" value="app"> app</label>
+        </div>
+        <div class="row" style="margin-top:8px">
           <button class="btn btn-sm" type="button" onclick="upd('qwdtt')">Сервер qWDTT</button>
           <button class="btn btn-tonal btn-sm" type="button" onclick="upd('csqtt')">Сервер CSQTT</button>
           <button class="btn btn-tonal btn-sm" type="button" onclick="upd('panel')">Панель</button>
+          <button class="btn btn-tonal btn-sm" type="button" onclick="upd('all')">Обновить всё</button>
           <button class="btn btn-ghost btn-sm" type="button" onclick="loadUpdateLog()">Обновить лог</button>
         </div>
         <p id="upd-status" class="status off"></p>
         <p id="upd-log-meta" class="hint" style="margin-top:8px"></p>
         <pre id="upd-log" class="update-log">лог ещё не загружен</pre>
+      </div>
+
+      <div class="panel">
+        <h3>Пароль панели</h3>
+        <form id="pass-form" onsubmit="return changePassword(event)">
+          <div class="form-row">
+            <div class="field"><label>Текущий</label><input name="current" type="password" autocomplete="current-password" required></div>
+            <div class="field"><label>Новый</label><input name="new" type="password" autocomplete="new-password" minlength="8" required></div>
+          </div>
+          <p id="pass-err" class="status off"></p>
+          <button class="btn btn-sm" type="submit">Сменить пароль</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>TLS сертификат</h3>
+        <p id="tls-info" class="hint">загрузка…</p>
+        <form id="tls-upload-form" onsubmit="return uploadTLS(event)">
+          <div class="field"><label>Cert (PEM)</label><textarea name="cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
+          <div class="field"><label>Key (PEM)</label><textarea name="key" rows="4" placeholder="-----BEGIN EC PRIVATE KEY-----"></textarea></div>
+          <button class="btn btn-sm" type="submit">Загрузить свой сертификат</button>
+        </form>
+        <form id="tls-le-form" style="margin-top:12px" onsubmit="return letsencryptTLS(event)">
+          <div class="form-row">
+            <div class="field"><label>Домен</label><input name="domain" placeholder="panel.example.com" required></div>
+            <div class="field"><label>Email</label><input name="email" type="email" placeholder="admin@example.com" required></div>
+          </div>
+          <p class="hint">Let's Encrypt standalone — порт 80 должен быть свободен.</p>
+          <button class="btn btn-tonal btn-sm" type="submit">Let's Encrypt</button>
+        </form>
+        <p id="tls-err" class="status off"></p>
       </div>
 
       <div class="toolbar">
@@ -582,12 +655,24 @@ pre{
         <span class="off">Ссылка</span>
         <code id="created-link"></code>
         <button class="btn btn-tonal btn-sm" type="button" onclick="copyCreated('link', this)">Копировать</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="showQR(createdLink)">QR</button>
       </div>
       <div class="modal-actions"><button class="btn" type="button" onclick="closeCreate()">Готово</button></div>
     </div>
   </div>
 </div>
 
+<div id="qr-modal" class="modal" hidden onclick="if(event.target===this)closeQR()">
+  <div class="modal-card qr-modal" role="dialog">
+    <div class="modal-head"><span>QR-код</span><button class="btn btn-ghost btn-sm" type="button" onclick="closeQR()">Закрыть</button></div>
+    <div id="qr-canvas"></div>
+    <p class="hint" id="qr-text" style="word-break:break-all;margin-top:12px"></p>
+  </div>
+</div>
+
+<div id="toast-wrap" class="toast-wrap" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script>
 let clientRows = [];
 let csqttRows = [];
@@ -597,6 +682,32 @@ let clientKind = 'qwdtt';
 let nav = 'monitoring';
 let editMode = false;
 let editPassword = '';
+let lastStatus = null;
+let logSource = 'panel';
+
+function toast(msg, kind){
+  kind = kind || 'info';
+  const wrap = document.getElementById('toast-wrap');
+  if (!wrap) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + (kind === 'ok' ? 'ok' : kind === 'bad' ? 'bad' : 'info');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => { el.remove(); }, 4500);
+}
+function notify(msg, ok){ toast(msg, ok ? 'ok' : 'bad'); }
+
+function expiryHint(exp, deactivated){
+  if (deactivated) return '<span class="expiry-warn">выключен</span>';
+  if (!exp) return '';
+  const t = Date.parse(exp);
+  if (!t) return '';
+  const d = Math.ceil((t - Date.now()) / 86400000);
+  if (d < 0) return '<span class="expiry-warn">истёк</span>';
+  if (d <= 3) return `<span class="expiry-soon">осталось ${d} дн.</span>`;
+  if (d <= 7) return `<span class="expiry-soon">${d} дн.</span>`;
+  return '';
+}
 
 function applyTheme(theme){
   // CSS dark tokens live on html[data-theme="dark"]; light = no attribute
@@ -647,9 +758,9 @@ function switchNav(name){
     document.getElementById('nav-'+id).classList.toggle('active', id === name);
   });
   if (name === 'clients' && clientKind === 'csqtt') loadCsqtt();
-  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); }
+  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); }
   if (name === 'monitoring') refresh().catch(()=>{});
-  if (name === 'logs') logs();
+  if (name === 'logs') { switchLogSource(); }
 }
 
 function showClientTab(kind){
@@ -670,10 +781,65 @@ function showSettingsTab(kind){
   if (!q) loadCsqttSettings();
 }
 
+function filterSortClients(rows){
+  const q = (document.getElementById('client-search')?.value || '').trim().toLowerCase();
+  const sort = document.getElementById('client-sort')?.value || 'label';
+  let list = rows.slice();
+  if (q) {
+    list = list.filter(c => {
+      const hay = [c.label, c.password, c.hashes].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  list.sort((a,b) => {
+    if (sort === 'expires') {
+      const ae = a.expires ? Date.parse(a.expires) : Infinity;
+      const be = b.expires ? Date.parse(b.expires) : Infinity;
+      return ae - be;
+    }
+    if (sort === 'traffic') {
+      return (Number(b.up||0)+Number(b.down||0)) - (Number(a.up||0)+Number(a.down||0));
+    }
+    return String(a.label||'').localeCompare(String(b.label||''), 'ru');
+  });
+  return list;
+}
+function renderClientLists(){
+  const qList = filterSortClients(clientRows);
+  const cList = filterSortClients(csqttRows);
+  document.getElementById('clients').innerHTML = qList.length
+    ? qList.map(c => renderClientCard(c, clientRows.indexOf(c), 'qwdtt')).join('')
+    : '<p class="hint">Нет клиентов qWDTT</p>';
+  const csEl = document.getElementById('csqtt-clients');
+  if (csEl) {
+    csEl.innerHTML = cList.length
+      ? cList.map(c => renderClientCard(c, csqttRows.indexOf(c), 'csqtt')).join('')
+      : '<p class="hint">Нет клиентов CSQTT</p>';
+  }
+}
+function exportClients(format){
+  const kind = clientKind === 'csqtt' ? 'csqtt' : 'qwdtt';
+  const url = '/api/clients/export?format=' + encodeURIComponent(format) + '&kind=' + encodeURIComponent(kind);
+  if (format === 'csv') {
+    window.location.href = url;
+    toast('CSV загружается', 'ok');
+    return;
+  }
+  api(url).then(d => {
+    const blob = new Blob([JSON.stringify(d, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'clients-' + kind + '.json';
+    a.click();
+    toast('Экспорт JSON готов', 'ok');
+  }).catch(ex => notify(ex.message || ex, false));
+}
+
 function renderClientCard(c, i, kind){
   const name = c.owner ? (kind === 'csqtt' ? (c.label || 'Главный пароль') : 'Главный пароль') : (c.label || 'клиент');
   const active = !c.deactivated;
-  const exp = c.owner ? '—' : (c.expires ? esc(c.expires) : '∞ Бессрочно');
+  const expHint = c.owner ? '' : expiryHint(c.expires, c.deactivated);
+  const exp = c.owner ? '—' : (c.expires ? esc(c.expires) + (expHint ? ' · '+expHint : '') : '∞ Бессрочно');
   const flows = kind === 'csqtt' ? (c.sessions||0) : (c.active_devices||0);
   const linkKey = kind === 'csqtt' ? 'csqtt_link' : 'qwdtt_link';
   const delFn = kind === 'csqtt' ? `delCsqtt(${i})` : `del(${i})`;
@@ -720,6 +886,8 @@ function renderClientCard(c, i, kind){
     ${devicesHtml}
     <div class="client-actions">
       <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'${linkKey}',this)">копировать ссылку</button>
+      ${kind==='qwdtt' && c.wdtt_link ? `<button class="btn btn-ghost btn-sm" type="button" onclick="copyField(${i},'wdtt_link',this)">wdtt://</button>` : ''}
+      ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="showQRLink(${i},'${linkKey}','${kind}')">QR</button>`}
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${editFn}">Редактировать</button>`}
       ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${toggleFn}">${active?'Выключить':'Включить'}</button>`}
       ${c.owner ? '' : `<button class="btn btn-bad btn-sm" type="button" onclick="${delFn}">Удалить</button>`}
@@ -730,6 +898,8 @@ function renderClientCard(c, i, kind){
 async function refresh(){
   try {
     const s = await api('/api/status');
+    lastStatus = s;
+    paintSocksBanner(s);
     const actHint = (Number(s.wdtt_active)||0) || (Number(s.csqtt_active)||0)
       ? ` · q${s.wdtt_active||0}/c${s.csqtt_active||0}` : '';
     const mark = (ok) => ok
@@ -766,6 +936,7 @@ async function refresh(){
 
     const logsOk = !!s.logs_active;
     const logsText = logsOk ? 'вкл' : 'выкл';
+    const natText = s.nat || '—';
 
     const rich = {CSQTT:1, qWDTT:1, 'SOCKS5 UDP':1, 'Логи':1};
     document.getElementById('stats').innerHTML = [
@@ -773,6 +944,9 @@ async function refresh(){
       ['Всего сессий', s.total],
       ['Аплинк', fmt(s.up_bytes)],
       ['Даунлинк', fmt(s.down_bytes)],
+      ['qWDTT ↑/↓', fmt(s.wdtt_up)+' / '+fmt(s.wdtt_down)],
+      ['CSQTT ↑/↓', fmt(s.csqtt_up)+' / '+fmt(s.csqtt_down)],
+      ['NAT', natText],
       ['Uptime', s.uptime || '—'],
       ['CSQTT', statusCard(csqttOk, csqttText)],
       ['SOCKS5 UDP', statusCard(socksOk, socksText)],
@@ -785,12 +959,43 @@ async function refresh(){
   try {
     const d = await api('/api/clients');
     clientRows = d.clients || [];
-    document.getElementById('clients').innerHTML = clientRows.map((c,i) => renderClientCard(c, i, 'qwdtt')).join('')
-      || '<p class="hint">Пока нет клиентов qWDTT</p>';
+    renderClientLists();
   } catch (ex) {
     document.getElementById('clients').innerHTML = `<p class="hint bad">${esc(ex.message||ex)}</p>`;
   }
 }
+function paintSocksBanner(s){
+  const el = document.getElementById('socks-banner');
+  if (!el || !s) return;
+  const on = !!s.socks_on;
+  const health = String(s.socks_health || '').trim();
+  if (on && health && health !== 'ok' && health !== 'выкл') {
+    el.hidden = false;
+    el.textContent = 'SOCKS5 включён, но health: ' + health + ' — проверьте UDP ASSOCIATE в инбаунде.';
+  } else {
+    el.hidden = true;
+    el.textContent = '';
+  }
+}
+function showQR(text){
+  text = String(text||'');
+  document.getElementById('qr-text').textContent = text;
+  const box = document.getElementById('qr-canvas');
+  box.innerHTML = '';
+  if (window.QRCode && text) {
+    const canvas = document.createElement('canvas');
+    box.appendChild(canvas);
+    QRCode.toCanvas(canvas, text, {width:240, margin:1}, err => {
+      if (err) box.textContent = 'QR: ' + err.message;
+    });
+  }
+  document.getElementById('qr-modal').hidden = false;
+}
+function showQRLink(i, key, kind){
+  const rows = kind === 'csqtt' ? csqttRows : clientRows;
+  showQR((rows[i] && rows[i][key]) || '');
+}
+function closeQR(){ document.getElementById('qr-modal').hidden = true; }
 
 function copyField(i, key, btn){
   copyText((clientRows[i] && clientRows[i][key]) || '').then(ok => flashBtn(btn, ok));
@@ -948,7 +1153,68 @@ async function del(i){
   try {
     await api('/api/clients/delete', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({password:p})});
     await refresh();
-  } catch (ex) { alert(ex.message || ex); }
+  } catch (ex) { notify(ex.message || ex, false); }
+}
+async function changePassword(e){
+  e.preventDefault();
+  const err = document.getElementById('pass-err');
+  err.textContent = '';
+  try {
+    const f = new FormData(e.target);
+    await api('/api/account/password', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({current:f.get('current'), new:f.get('new')})
+    });
+    e.target.reset();
+    notify('Пароль изменён', true);
+  } catch (ex) {
+    err.className = 'status bad';
+    err.textContent = ex.message || ex;
+  }
+  return false;
+}
+async function loadTLS(){
+  const el = document.getElementById('tls-info');
+  if (!el) return;
+  try {
+    const d = await api('/api/tls');
+    if (d.error) { el.textContent = d.error; return; }
+    el.innerHTML = `<b>${esc(d.subject||'?')}</b> · issuer ${esc(d.issuer||'?')} · до ${esc(d.not_after||'?')} ${d.self_signed?'· self-signed':''}`;
+  } catch (ex) { el.textContent = ex.message || ex; }
+}
+async function uploadTLS(e){
+  e.preventDefault();
+  const err = document.getElementById('tls-err');
+  err.textContent = '';
+  try {
+    const f = new FormData(e.target);
+    const body = new URLSearchParams({action:'upload', cert:f.get('cert'), key:f.get('key')});
+    const d = await api('/api/tls', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+    notify(d.message || 'Сертификат загружен', true);
+    await loadTLS();
+  } catch (ex) {
+    err.className = 'status bad';
+    err.textContent = ex.message || ex;
+  }
+  return false;
+}
+async function letsencryptTLS(e){
+  e.preventDefault();
+  const err = document.getElementById('tls-err');
+  err.textContent = '';
+  if (!confirm('Запустить certbot standalone? Порт 80 должен быть свободен.')) return false;
+  try {
+    const f = new FormData(e.target);
+    const body = new URLSearchParams({action:'letsencrypt', domain:f.get('domain'), email:f.get('email')});
+    const d = await api('/api/tls', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+    notify(d.message || 'Let\'s Encrypt OK', true);
+    await loadTLS();
+  } catch (ex) {
+    err.className = 'status bad';
+    err.textContent = ex.message || ex;
+  }
+  return false;
 }
 async function toggleClient(i){
   const c = clientRows[i];
@@ -959,7 +1225,7 @@ async function toggleClient(i){
   try {
     await api(path, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({password:c.password})});
     await refresh();
-  } catch (ex) { alert(ex.message || ex); }
+  } catch (ex) { notify(ex.message || ex, false); }
 }
 async function unbindDevice(i, deviceId){
   const c = clientRows[i];
@@ -972,7 +1238,7 @@ async function unbindDevice(i, deviceId){
       body:new URLSearchParams({password:c.password, device_id:deviceId})
     });
     await refresh();
-  } catch (ex) { alert(ex.message || ex); }
+  } catch (ex) { notify(ex.message || ex, false); }
 }
 async function delCsqtt(i){
   const p = csqttRows[i] && csqttRows[i].password;
@@ -980,7 +1246,7 @@ async function delCsqtt(i){
   try {
     await api('/api/csqtt/clients/delete', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({password:p})});
     await loadCsqtt();
-  } catch (ex) { alert(ex.message || ex); }
+  } catch (ex) { notify(ex.message || ex, false); }
 }
 async function toggleCsqtt(i){
   const c = csqttRows[i];
@@ -989,7 +1255,7 @@ async function toggleCsqtt(i){
   try {
     await api('/api/csqtt/clients/toggle', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({password:c.password})});
     await loadCsqtt();
-  } catch (ex) { alert(ex.message || ex); }
+  } catch (ex) { notify(ex.message || ex, false); }
 }
 async function loadCsqtt(){
   const st = document.getElementById('csqtt-status');
@@ -1012,8 +1278,7 @@ async function loadCsqtt(){
 async function loadCsqttClients(){
   const d = await api('/api/csqtt/clients');
   csqttRows = d.clients || [];
-  document.getElementById('csqtt-clients').innerHTML = csqttRows.map((c,i) => renderClientCard(c, i, 'csqtt')).join('')
-    || '<p class="hint">Пока нет клиентов CSQTT</p>';
+  renderClientLists();
 }
 function copyCsqtt(i, key, btn){
   copyText((csqttRows[i] && csqttRows[i][key]) || '').then(ok => flashBtn(btn, ok));
@@ -1043,14 +1308,38 @@ async function loadCsqttSettings(){
     st.textContent = ex.message || ex;
   }
 }
+function switchLogSource(){
+  logSource = document.getElementById('log-source')?.value || 'panel';
+  const toggleBtn = document.getElementById('log-toggle');
+  const journal = logSource.startsWith('journal');
+  if (toggleBtn) toggleBtn.hidden = journal;
+  logs();
+}
 async function logs(){
+  const pre = document.getElementById('log');
+  if (logSource.startsWith('journal')) {
+    const unit = logSource === 'journal-wdtt' ? 'wdtt' : logSource === 'journal-csqtt' ? 'csqtt' : 'panel';
+    const d = await api('/api/journal?unit='+encodeURIComponent(unit)+'&lines=300');
+    pre.textContent = d.text || d.error || '';
+    return;
+  }
   const d = await api('/api/logs');
-  document.getElementById('log').textContent = d.text || '';
+  pre.textContent = d.text || '';
   const btn = document.getElementById('log-toggle');
   if (btn) btn.textContent = d.active ? 'Выключить логи' : 'Включить логи';
 }
-async function toggleLogs(){ await api('/api/logs/toggle', {method:'POST'}); await logs(); }
-async function clearLogs(){ if (!confirm('Очистить лог?')) return; await api('/api/logs/clear', {method:'POST'}); await logs(); }
+async function toggleLogs(){
+  if (logSource.startsWith('journal')) return;
+  await api('/api/logs/toggle', {method:'POST'});
+  await logs();
+}
+async function clearLogs(){
+  if (logSource.startsWith('journal')) { notify('journalctl нельзя очистить отсюда', false); return; }
+  if (!confirm('Очистить лог?')) return;
+  await api('/api/logs/clear', {method:'POST'});
+  await logs();
+  notify('Лог очищен', true);
+}
 
 async function loadSocks(){
   const d = await api('/api/socks');
@@ -1141,27 +1430,30 @@ async function socksOff(){
 }
 async function upd(target){
   target = target || 'panel';
+  const mode = document.querySelector('input[name="upd-mode"]:checked')?.value || 'source';
   const labels = {
     qwdtt:'сервер qWDTT (wdtt-server)',
     csqtt:'сервер CSQTT',
-    panel:'панель qwdtt-panel'
+    panel:'панель qwdtt-panel',
+    all:'все компоненты'
   };
   const label = labels[target] || target;
-  if (!confirm('Обновить с GitHub: '+label+'?\nСборка может занять несколько минут.')) return;
+  if (!confirm('Обновить с GitHub: '+label+' ('+mode+')?\nСборка может занять несколько минут.')) return;
   const st = document.getElementById('upd-status');
-  if (st) { st.className = 'status on'; st.textContent = 'Запущено: '+label+'…'; }
+  if (st) { st.className = 'status on'; st.textContent = 'Запущено: '+label+' ('+mode+')…'; }
   try {
     await api('/api/update-server', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({target, mode:'source'})
+      body: new URLSearchParams({target, mode})
     });
     if (st) st.textContent = 'Обновление запущено ('+label+'). Смотрите лог ниже.';
+    notify('Обновление запущено', true);
     await loadUpdateLog();
     startUpdateLogPoll();
   } catch (ex) {
     if (st) { st.className = 'status bad'; st.textContent = ex.message || ex; }
-    alert(ex.message || ex);
+    notify(ex.message || ex, false);
   }
 }
 let updateLogTimer = null;
@@ -1186,7 +1478,15 @@ async function loadUpdateLog(){
       if (d.path) bits.push(d.path);
       if (d.mtime) bits.push('изменён '+d.mtime);
       if (d.size) bits.push(fmt(d.size));
+      if (d.status) bits.push('статус: '+d.status);
       meta.textContent = bits.join(' · ');
+    }
+    const st = document.getElementById('upd-status');
+    if (st && d.status) {
+      st.className = 'status ' + (d.status === 'error' ? 'bad' : d.status === 'success' ? 'on' : 'off');
+      if (d.status === 'running') st.textContent = 'Обновление выполняется…';
+      else if (d.status === 'success') st.textContent = 'Обновление завершено успешно';
+      else if (d.status === 'error') st.textContent = 'Ошибка обновления — см. лог';
     }
     pre.scrollTop = pre.scrollHeight;
   } catch (ex) {
@@ -1307,7 +1607,7 @@ async function restartSvc(target){
     if (st) { st.className = 'status bad'; st.textContent = ex.message || ex; }
     if (el) { el.className = 'status bad'; el.textContent = ex.message || ex; }
     await loadServices();
-    alert(ex.message || ex);
+    notify(ex.message || ex, false);
   }
 }
 

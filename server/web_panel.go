@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"log"
 	"math/big"
 	"net"
@@ -87,6 +86,9 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 		log.Println("[WEB] панель выключена (-web-port 0)")
 		return
 	}
+	if serverStartTime.IsZero() {
+		serverStartTime = time.Now()
+	}
 	panelDir = configDir
 	if user == "" {
 		user = "admin"
@@ -135,6 +137,7 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", handlePanelLogin)
 	mux.HandleFunc("/logout", handlePanelLogout)
+	mux.HandleFunc("/api/health", handlePanelHealth)
 	mux.HandleFunc("/", handlePanelIndex)
 	mux.HandleFunc("/api/status", handlePanelStatus)
 	mux.HandleFunc("/api/clients", handlePanelClients)
@@ -143,6 +146,10 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/clients/activate", handlePanelActivateClient)
 	mux.HandleFunc("/api/clients/deactivate", handlePanelDeactivateClient)
 	mux.HandleFunc("/api/clients/unbind", handlePanelUnbindDevice)
+	mux.HandleFunc("/api/clients/export", handlePanelClientsExport)
+	mux.HandleFunc("/api/account/password", handlePanelChangePassword)
+	mux.HandleFunc("/api/tls", handlePanelTLS)
+	mux.HandleFunc("/api/journal", handlePanelJournal)
 	mux.HandleFunc("/api/logs", handlePanelLogs)
 	mux.HandleFunc("/api/update-log", handlePanelUpdateLog)
 	mux.HandleFunc("/api/logs/clear", handlePanelLogsClear)
@@ -297,14 +304,21 @@ func handlePanelLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method", http.StatusMethodNotAllowed)
 		return
 	}
+	host := panelLoginHost(r)
+	if panelLoginBlocked(host) {
+		http.Redirect(w, r, "/login?bad=1&locked=1", http.StatusFound)
+		return
+	}
 	_ = r.ParseForm()
 	user := strings.TrimSpace(r.FormValue("user"))
 	pass := r.FormValue("pass")
 	got := hashPanelPass(user, pass)
 	if subtle.ConstantTimeCompare(got[:], panelPassHash[:]) != 1 || user != panelUser {
+		recordPanelLoginFailure(host, time.Now())
 		http.Redirect(w, r, "/login?bad=1", http.StatusFound)
 		return
 	}
+	clearPanelLoginFailure(host)
 	tok := randomPanelPass() + randomPanelPass()
 	panelSessMu.Lock()
 	panelSessions[tok] = time.Now().Add(12 * time.Hour)
@@ -1035,52 +1049,26 @@ func handlePanelUpdateLog(w http.ResponseWriter, r *http.Request) {
 		writePanelError(w, http.StatusMethodNotAllowed, "method")
 		return
 	}
-	const maxTail = 96 << 10 // 96 KiB
-	st, err := os.Stat(panelUpdateLogPath)
+	const maxTail = 96 << 10
+	text, size, modTime, err := tailFile(panelUpdateLogPath, maxTail)
 	if err != nil {
 		writePanelJSON(w, map[string]interface{}{
-			"path": panelUpdateLogPath,
-			"text": "",
-			"empty": true,
-			"error": "лог ещё не создан",
+			"path":   panelUpdateLogPath,
+			"text":   "",
+			"empty":  true,
+			"status": "idle",
+			"error":  "лог ещё не создан",
 		})
 		return
 	}
-	f, err := os.Open(panelUpdateLogPath)
-	if err != nil {
-		writePanelError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	defer f.Close()
-	size := st.Size()
-	var start int64
-	if size > maxTail {
-		start = size - maxTail
-	}
-	if start > 0 {
-		if _, err := f.Seek(start, 0); err != nil {
-			writePanelError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-	b, err := io.ReadAll(io.LimitReader(f, maxTail+1))
-	if err != nil {
-		writePanelError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	text := string(b)
-	if start > 0 {
-		if i := strings.IndexByte(text, '\n'); i >= 0 && i+1 < len(text) {
-			text = text[i+1:]
-		}
-		text = "…\n" + text
-	}
+	status := parseUpdateLogStatus(text, modTime)
 	writePanelJSON(w, map[string]interface{}{
-		"path":  panelUpdateLogPath,
-		"text":  text,
-		"size":  size,
-		"mtime": st.ModTime().Local().Format("2006-01-02 15:04:05"),
-		"empty": len(strings.TrimSpace(text)) == 0,
+		"path":   panelUpdateLogPath,
+		"text":   text,
+		"size":   size,
+		"mtime":  modTime.Local().Format("2006-01-02 15:04:05"),
+		"empty":  len(strings.TrimSpace(text)) == 0,
+		"status": status,
 	})
 }
 

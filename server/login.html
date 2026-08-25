@@ -78,7 +78,8 @@ button:hover{filter:brightness(1.05)}
   </form>
 </div>
 <script>
-if (location.search.indexOf('bad')>=0) document.getElementById('e').textContent='Неверный логин или пароль';
+if (location.search.indexOf('locked')>=0) document.getElementById('e').textContent='Слишком много попыток. Подождите 5 минут.';
+else if (location.search.indexOf('bad')>=0) document.getElementById('e').textContent='Неверный логин или пароль';
 </script>
 </body>
 </html>
