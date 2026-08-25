@@ -63,9 +63,8 @@ type panelFileStore struct {
 	ActiveSocksID string         `json:"active_socks_id,omitempty"`
 	CsqttURL      string                `json:"csqtt_url,omitempty"`
 	CsqttUser     string                `json:"csqtt_user,omitempty"`
-	CsqttPass     string            `json:"csqtt_pass,omitempty"`
-	Notify        panelNotifyConfig `json:"notify,omitempty"`
-	TLSCertFile   string            `json:"tls_cert_file,omitempty"`
+	CsqttPass   string `json:"csqtt_pass,omitempty"`
+	TLSCertFile string `json:"tls_cert_file,omitempty"`
 	TLSKeyFile    string            `json:"tls_key_file,omitempty"`
 }
 
@@ -167,7 +166,6 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/clients/reset-traffic", handlePanelResetTraffic)
 	mux.HandleFunc("/api/csqtt/unbind", handlePanelCsqttUnbind)
 	mux.HandleFunc("/api/account/password", handlePanelChangePassword)
-	mux.HandleFunc("/api/account/notify", handlePanelNotifySettings)
 	mux.HandleFunc("/api/audit", handlePanelAudit)
 	mux.HandleFunc("/api/qr", handlePanelQR)
 	mux.HandleFunc("/api/tls", handlePanelTLS)

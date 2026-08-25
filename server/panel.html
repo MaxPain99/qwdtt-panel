@@ -588,28 +588,6 @@ pre{
       </div>
 
       <div class="panel">
-        <h3>Уведомления</h3>
-        <form id="notify-form" onsubmit="return saveNotify(event)">
-          <div class="form-row">
-            <div class="field"><label>Telegram token</label><input name="telegram_token" type="password" placeholder="оставьте пустым, чтобы не менять"></div>
-            <div class="field"><label>Telegram chat ID</label><input name="telegram_chat"></div>
-          </div>
-          <div class="form-row">
-            <div class="field"><label>Email to</label><input name="email_to"></div>
-            <div class="field"><label>SMTP server</label><input name="smtp_server" placeholder="host:25"></div>
-          </div>
-          <div class="field"><label>Webhook URL</label><input name="webhook_url"></div>
-          <div class="row">
-            <label class="check"><input type="checkbox" name="on_health_fail" value="1"> Проблемы health</label>
-            <label class="check"><input type="checkbox" name="on_client_expiry" value="1"> Истечение клиентов</label>
-            <label class="check"><input type="checkbox" name="on_socks_bad" value="1"> SOCKS health</label>
-          </div>
-          <button class="btn btn-sm" type="submit">Сохранить</button>
-        </form>
-        <p id="notify-err" class="status off"></p>
-      </div>
-
-      <div class="panel">
         <h3>Аудит</h3>
         <button class="btn btn-ghost btn-sm" type="button" onclick="loadAudit()">Обновить</button>
         <pre id="audit-log" class="update-log">—</pre>
@@ -817,7 +795,7 @@ function switchNav(name){
     document.getElementById('nav-'+id).classList.toggle('active', id === name);
   });
   if (name === 'clients' && clientKind === 'csqtt') loadCsqtt();
-  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); loadNotify(); loadAudit(); }
+  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); loadAudit(); }
   if (name === 'monitoring') refresh().catch(()=>{});
   if (name === 'logs') { switchLogSource(); }
 }
@@ -1352,37 +1330,6 @@ async function renewTLS(){
     await loadTLS();
   } catch (ex) { notify(ex.message || ex, false); }
 }
-async function loadNotify(){
-  const form = document.getElementById('notify-form');
-  if (!form) return;
-  try {
-    const d = await api('/api/account/notify');
-    form.telegram_chat.value = d.telegram_chat || '';
-    form.email_to.value = d.email_to || '';
-    form.email_from.value = d.email_from || '';
-    form.smtp_server.value = d.smtp_server || '';
-    form.webhook_url.value = d.webhook_url || '';
-    form.on_health_fail.checked = !!d.on_health_fail;
-    form.on_client_expiry.checked = !!d.on_client_expiry;
-    form.on_socks_bad.checked = !!d.on_socks_bad;
-  } catch (ex) {}
-}
-async function saveNotify(e){
-  e.preventDefault();
-  const err = document.getElementById('notify-err');
-  try {
-    const f = new FormData(e.target);
-    const body = new URLSearchParams(f);
-    ['on_health_fail','on_client_expiry','on_socks_bad'].forEach(k => {
-      if (!f.get(k)) body.set(k, '0'); else body.set(k, '1');
-    });
-    await api('/api/account/notify', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
-    notify('Уведомления сохранены', true);
-  } catch (ex) {
-    if (err) { err.className='status bad'; err.textContent = ex.message || ex; }
-  }
-  return false;
-}
 async function loadAudit(){
   const pre = document.getElementById('audit-log');
   if (!pre) return;
@@ -1465,22 +1412,6 @@ async function clearTLSPaths(){
     notify(d.message || 'Сброшено', true);
     await loadTLS();
   } catch (ex) { notify(ex.message || ex, false); }
-}
-async function uploadTLS(e){
-  e.preventDefault();
-  const err = document.getElementById('tls-err');
-  err.textContent = '';
-  try {
-    const f = new FormData(e.target);
-    const body = new URLSearchParams({action:'upload', cert:f.get('cert'), key:f.get('key')});
-    const d = await api('/api/tls', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
-    notify(d.message || 'Сертификат загружен', true);
-    await loadTLS();
-  } catch (ex) {
-    err.className = 'status bad';
-    err.textContent = ex.message || ex;
-  }
-  return false;
 }
 async function letsencryptTLS(e){
   e.preventDefault();

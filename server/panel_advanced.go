@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/smtp"
 	"net/url"
 	"os"
 	"os/exec"
@@ -25,32 +24,13 @@ const (
 	panelAuditFile        = "panel_audit.log"
 	panelSessionsFile     = "panel_sessions.json"
 	panelUpdateStatusFile = "/var/log/qwdtt-panel-update.status"
-	panelNotifyInterval   = 5 * time.Minute
 )
-
-type panelNotifyConfig struct {
-	TelegramToken  string `json:"telegram_token,omitempty"`
-	TelegramChat   string `json:"telegram_chat,omitempty"`
-	EmailTo        string `json:"email_to,omitempty"`
-	EmailFrom      string `json:"email_from,omitempty"`
-	SMTPServer     string `json:"smtp_server,omitempty"`
-	WebhookURL     string `json:"webhook_url,omitempty"`
-	OnHealthFail   bool   `json:"on_health_fail,omitempty"`
-	OnClientExpiry bool   `json:"on_client_expiry,omitempty"`
-	OnSocksBad     bool   `json:"on_socks_bad,omitempty"`
-}
 
 type persistedSessions struct {
 	Tokens map[string]time.Time `json:"tokens"`
 }
 
-var (
-	panelAuditMu     sync.Mutex
-	panelNotifyMu    sync.Mutex
-	lastHealthOK     = true
-	lastSocksOK      = true
-	notifiedExpiring = map[string]bool{}
-)
+var panelAuditMu sync.Mutex
 
 func panelAudit(action, detail string) {
 	panelAuditMu.Lock()
@@ -103,119 +83,8 @@ func savePanelSessions() {
 	_ = os.WriteFile(filepath.Join(panelDir, panelSessionsFile), b, 0600)
 }
 
-func getPanelNotifySettings() panelNotifyConfig {
-	panelStoreMu.Lock()
-	defer panelStoreMu.Unlock()
-	if panelStore == nil {
-		return panelNotifyConfig{}
-	}
-	return panelStore.Notify
-}
-
 func startPanelBackgroundTasks() {
 	loadPanelSessions()
-	go panelNotifyLoop()
-}
-
-func panelNotifyLoop() {
-	ticker := time.NewTicker(panelNotifyInterval)
-	defer ticker.Stop()
-	for range ticker.C {
-		panelCheckNotifications()
-	}
-}
-
-func panelCheckNotifications() {
-	cfg := getPanelNotifySettings()
-	if cfg.TelegramToken == "" && cfg.WebhookURL == "" && cfg.EmailTo == "" {
-		return
-	}
-	wdttOK, _ := panelUnitActive("wdtt")
-	panelOK, _ := panelUnitActive("qwdtt-panel")
-	socksOn, _, _, socksHealth := socksSnapshot()
-	healthOK := panelOK && wdttOK && (!socksOn || socksHealth == "" || socksHealth == "ok")
-
-	panelNotifyMu.Lock()
-	if cfg.OnHealthFail && lastHealthOK && !healthOK {
-		panelSendNotify(cfg, "⚠️ qwdtt-panel: проблема со здоровьем сервисов")
-	}
-	if cfg.OnSocksBad && lastSocksOK && socksOn && socksHealth != "" && socksHealth != "ok" {
-		panelSendNotify(cfg, "⚠️ SOCKS5: "+socksHealth)
-	}
-	lastHealthOK = healthOK
-	lastSocksOK = !socksOn || socksHealth == "" || socksHealth == "ok"
-	panelNotifyMu.Unlock()
-
-	if !cfg.OnClientExpiry {
-		return
-	}
-	now := time.Now()
-	checkExp := func(pass, label, expStr string) {
-		if expStr == "" {
-			return
-		}
-		t, err := time.Parse("2006-01-02", expStr)
-		if err != nil {
-			return
-		}
-		days := int(t.Sub(now).Hours() / 24)
-		if days < 0 || days > 3 {
-			return
-		}
-		key := pass + ":" + expStr
-		panelNotifyMu.Lock()
-		if notifiedExpiring[key] {
-			panelNotifyMu.Unlock()
-			return
-		}
-		notifiedExpiring[key] = true
-		panelNotifyMu.Unlock()
-		msg := fmt.Sprintf("⏳ Клиент %s (%s) истекает %s (%d дн.)", label, pass, expStr, days)
-		panelSendNotify(cfg, msg)
-	}
-	if panelWdttAdminEnabled() {
-		if list, err := panelAdminListPasswords(); err == nil {
-			for _, e := range list {
-				exp := ""
-				if e.ExpiresAt > 0 {
-					exp = time.Unix(e.ExpiresAt, 0).Format("2006-01-02")
-				}
-				checkExp(e.Password, e.Label, exp)
-			}
-		}
-	}
-	if list, err := csqttListClients(); err == nil {
-		for _, c := range list {
-			pass, _ := c["password"].(string)
-			label, _ := c["label"].(string)
-			exp, _ := c["expires"].(string)
-			checkExp(pass, label, exp)
-		}
-	}
-}
-
-func panelSendNotify(cfg panelNotifyConfig, text string) {
-	if cfg.TelegramToken != "" && cfg.TelegramChat != "" {
-		u := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", url.PathEscape(cfg.TelegramToken))
-		body, _ := json.Marshal(map[string]string{"chat_id": cfg.TelegramChat, "text": text})
-		req, _ := http.NewRequest(http.MethodPost, u, bytes.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		http.DefaultClient.Do(req)
-	}
-	if cfg.WebhookURL != "" {
-		body, _ := json.Marshal(map[string]string{"text": text, "source": "qwdtt-panel"})
-		req, _ := http.NewRequest(http.MethodPost, cfg.WebhookURL, bytes.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		http.DefaultClient.Do(req)
-	}
-	if cfg.EmailTo != "" && cfg.SMTPServer != "" {
-		from := cfg.EmailFrom
-		if from == "" {
-			from = "panel@localhost"
-		}
-		msg := "Subject: qwdtt-panel alert\r\n\r\n" + text
-		_ = smtp.SendMail(cfg.SMTPServer, nil, from, []string{cfg.EmailTo}, []byte(msg))
-	}
 }
 
 func handlePanelMetrics(w http.ResponseWriter, r *http.Request) {
@@ -275,56 +144,6 @@ func handlePanelAudit(w http.ResponseWriter, r *http.Request) {
 		all = all[len(all)-lines:]
 	}
 	writePanelJSON(w, map[string]interface{}{"text": strings.Join(all, "\n"), "lines": len(all)})
-}
-
-func handlePanelNotifySettings(w http.ResponseWriter, r *http.Request) {
-	if !requirePanelAuth(w, r) {
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		cfg := getPanelNotifySettings()
-		writePanelJSON(w, map[string]interface{}{
-			"telegram_chat":    cfg.TelegramChat,
-			"email_to":           cfg.EmailTo,
-			"email_from":         cfg.EmailFrom,
-			"smtp_server":        cfg.SMTPServer,
-			"webhook_url":        cfg.WebhookURL,
-			"on_health_fail":     cfg.OnHealthFail,
-			"on_client_expiry":   cfg.OnClientExpiry,
-			"on_socks_bad":       cfg.OnSocksBad,
-			"has_telegram_token": cfg.TelegramToken != "",
-		})
-	case http.MethodPost:
-		if err := parsePanelForm(r); err != nil {
-			writePanelError(w, http.StatusBadRequest, "form")
-			return
-		}
-		panelStoreMu.Lock()
-		if panelStore == nil {
-			panelStore = &panelFileStore{}
-		}
-		if v := r.FormValue("telegram_token"); v != "" {
-			panelStore.Notify.TelegramToken = strings.TrimSpace(v)
-		}
-		panelStore.Notify.TelegramChat = strings.TrimSpace(r.FormValue("telegram_chat"))
-		panelStore.Notify.EmailTo = strings.TrimSpace(r.FormValue("email_to"))
-		panelStore.Notify.EmailFrom = strings.TrimSpace(r.FormValue("email_from"))
-		panelStore.Notify.SMTPServer = strings.TrimSpace(r.FormValue("smtp_server"))
-		panelStore.Notify.WebhookURL = strings.TrimSpace(r.FormValue("webhook_url"))
-		panelStore.Notify.OnHealthFail = r.FormValue("on_health_fail") == "1"
-		panelStore.Notify.OnClientExpiry = r.FormValue("on_client_expiry") == "1"
-		panelStore.Notify.OnSocksBad = r.FormValue("on_socks_bad") == "1"
-		panelStoreMu.Unlock()
-		if err := persistPanelStore(); err != nil {
-			writePanelError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		panelAudit("notify_settings", "updated")
-		writePanelJSON(w, map[string]bool{"ok": true})
-	default:
-		writePanelError(w, http.StatusMethodNotAllowed, "method")
-	}
 }
 
 func handlePanelQR(w http.ResponseWriter, r *http.Request) {
