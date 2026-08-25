@@ -1789,24 +1789,17 @@ async function restartSvc(target){
       body: new URLSearchParams({target})
     });
     if (res && res.services) paintServices(res.services);
-    if (el) { el.className = 'status off'; el.textContent = 'перезапускается… проверяю…'; }
+    if (el) { el.className = 'status off'; el.textContent = 'перезапускается…'; }
     await waitServicesReady(target);
-    if (st) { st.className = 'status on'; st.textContent = label + ' перезапущен'; }
-    if (el) {
-      const cur = el.textContent || '';
-      if (!cur.includes('перезапущен')) {
-        el.textContent = (cur ? cur + ' · ' : '') + 'перезапущен';
-      }
-    }
+    if (st) { st.textContent = ''; st.className = 'status off'; }
     if (target === 'csqtt') await loadCsqttSettings();
     await refresh().catch(()=>{});
   } catch (ex) {
     // restart panel kills the process — request may fail; poll until back
     if (target === 'panel') {
       if (el) { el.className = 'status off'; el.textContent = 'перезапускается…'; }
-      if (st) { st.className = 'status off'; st.textContent = 'Жду панель после рестарта…'; }
       await waitServicesReady('panel', 12);
-      if (st) { st.className = 'status on'; st.textContent = 'панель перезапущена'; }
+      if (st) { st.textContent = ''; st.className = 'status off'; }
       await refresh().catch(()=>{});
       return;
     }
