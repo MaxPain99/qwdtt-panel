@@ -291,17 +291,17 @@ html:not([data-theme="dark"]) .update-log{background:#1a1c20;color:#e2e2e6}
 .form-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 @media (max-width:800px){.form-row{grid-template-columns:1fr 1fr}}
 @media (max-width:480px){.form-row{grid-template-columns:1fr}}
-.field{margin:0 0 8px}
-.field label{
+.field{margin:0 0 12px}
+.field > label:not(.check){
   display:block;margin:0 0 6px;font-size:.75rem;font-weight:500;
   color:var(--md-on-surface-variant);
 }
-.field input{
+.field input:not([type=checkbox]){
   width:100%;height:56px;border-radius:var(--md-shape-sm);
   padding:0 16px;border:1px solid var(--md-outline);
   background:var(--md-surface);color:var(--md-on-surface);outline:none;
 }
-.field input:focus{
+.field input:not([type=checkbox]):focus{
   border-color:var(--md-primary);border-width:2px;padding:0 15px;
   box-shadow:0 0 0 1px var(--md-primary);
 }
@@ -352,8 +352,8 @@ pre{
   border-radius:var(--md-shape-md);padding:12px;margin:10px 0;
 }
 .created-box code{display:block;margin:6px 0 10px;background:transparent;padding:0;word-break:break-all}
-.check{display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:.9rem}
-.check input{width:18px;height:18px;accent-color:var(--md-primary)}
+.check{display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;font-size:.9rem;font-weight:500;color:var(--md-on-surface)}
+.check input{width:18px;height:18px;margin:0;flex-shrink:0;accent-color:var(--md-primary)}
 .hashes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 @media (max-width:520px){.hashes{grid-template-columns:1fr}}
 .list{margin:0;padding-left:20px;color:var(--md-on-surface-variant);line-height:1.6}
@@ -612,7 +612,6 @@ pre{
       <div id="settings-csqtt" class="panel" hidden>
         <h3>CSQTT</h3>
         <p id="csqtt-settings-status" class="status off"></p>
-        <p class="hint">Версия: <b id="ver-csqtt">…</b></p>
         <p class="hint">TUN: <b id="tun-csqtt">10.66.67.0/24</b> · iface <b id="iface-csqtt">csqtt1</b></p>
         <div class="row">
           <button class="btn btn-tonal btn-sm" type="button" onclick="loadCsqttSettings()">Обновить</button>
@@ -1720,13 +1719,10 @@ function paintServices(d){
   paint('csqtt', map.csqtt, d.csqtt && d.csqtt.api_ok ? ' · API OK' : (d.csqtt && d.csqtt.active ? ' · API нет' : ''));
   paint('panel', map.panel, '');
   const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v || '—'; };
-  setTxt('ver-qwdtt', d.qwdtt && d.qwdtt.version);
   setTxt('tun-qwdtt', (d.qwdtt && d.qwdtt.tun) || '10.66.66.0/24');
   setTxt('iface-qwdtt', (d.qwdtt && d.qwdtt.iface) || 'wdtt0');
-  setTxt('ver-csqtt', d.csqtt && d.csqtt.version);
   setTxt('tun-csqtt', (d.csqtt && d.csqtt.tun) || '10.66.67.0/24');
   setTxt('iface-csqtt', (d.csqtt && d.csqtt.iface) || 'csqtt1');
-  setTxt('ver-panel', d.panel && d.panel.version);
   if (detail) {
     const s = d.qwdtt || {};
     detail.className = 'status ' + (s.active ? 'on' : 'bad');
