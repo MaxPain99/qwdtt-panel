@@ -73,20 +73,13 @@ button:hover{filter:brightness(1.05)}
     <input name="user" autocomplete="username" required>
     <label>Пароль</label>
     <input name="pass" type="password" autocomplete="current-password" required>
-    <label id="totp-label" hidden>Код 2FA</label>
-    <input name="totp" id="totp-input" inputmode="numeric" autocomplete="one-time-code" hidden>
     <div class="err" id="e"></div>
     <button type="submit">Войти</button>
   </form>
 </div>
 <script>
 if (location.search.indexOf('locked')>=0) document.getElementById('e').textContent='Слишком много попыток. Подождите 5 минут.';
-else if (location.search.indexOf('totp')>=0) {
-  document.getElementById('e').textContent='Неверный код 2FA';
-  document.getElementById('totp-label').hidden = false;
-  document.getElementById('totp-input').hidden = false;
-  document.getElementById('totp-input').required = true;
-} else if (location.search.indexOf('bad')>=0) document.getElementById('e').textContent='Неверный логин или пароль';
+else if (location.search.indexOf('bad')>=0) document.getElementById('e').textContent='Неверный логин или пароль';
 </script>
 </body>
 </html>

@@ -605,18 +605,6 @@ pre{
       </div>
 
       <div class="panel">
-        <h3>2FA (TOTP)</h3>
-        <p id="twofa-status" class="hint">загрузка…</p>
-        <div class="row">
-          <button class="btn btn-tonal btn-sm" type="button" onclick="setup2FA()">Настроить</button>
-          <input id="twofa-code" placeholder="код из приложения" style="max-width:160px">
-          <button class="btn btn-sm" type="button" onclick="enable2FA()">Включить</button>
-          <button class="btn btn-ghost btn-sm" type="button" onclick="disable2FA()">Выключить</button>
-        </div>
-        <p id="twofa-secret" class="hint" style="word-break:break-all"></p>
-      </div>
-
-      <div class="panel">
         <h3>Аудит</h3>
         <button class="btn btn-ghost btn-sm" type="button" onclick="loadAudit()">Обновить</button>
         <pre id="audit-log" class="update-log">—</pre>
@@ -839,7 +827,7 @@ function switchNav(name){
     document.getElementById('nav-'+id).classList.toggle('active', id === name);
   });
   if (name === 'clients' && clientKind === 'csqtt') loadCsqtt();
-  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); loadNotify(); load2FA(); loadAudit(); loadSocksProfiles(); }
+  if (name === 'settings') { loadSocks(); loadCsqttSettings(); loadServices(); loadUpdateLog(); loadTLS(); loadNotify(); loadAudit(); loadSocksProfiles(); }
   if (name === 'monitoring') refresh().catch(()=>{});
   if (name === 'logs') { switchLogSource(); }
 }
@@ -1381,38 +1369,6 @@ async function saveNotify(e){
     if (err) { err.className='status bad'; err.textContent = ex.message || ex; }
   }
   return false;
-}
-async function load2FA(){
-  const st = document.getElementById('twofa-status');
-  try {
-    const d = await api('/api/account/2fa');
-    if (st) st.textContent = d.enabled ? '2FA включена' : (d.pending ? 'ожидает подтверждения' : '2FA выключена');
-  } catch (ex) { if (st) st.textContent = ex.message || ex; }
-}
-async function setup2FA(){
-  try {
-    const d = await api('/api/account/2fa', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'setup'})});
-    const el = document.getElementById('twofa-secret');
-    if (el) el.textContent = 'Secret: ' + (d.secret || '') + (d.uri ? '\n' + d.uri : '');
-    await load2FA();
-  } catch (ex) { notify(ex.message || ex, false); }
-}
-async function enable2FA(){
-  const code = document.getElementById('twofa-code')?.value || '';
-  try {
-    await api('/api/account/2fa', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'enable', code})});
-    notify('2FA включена', true);
-    await load2FA();
-  } catch (ex) { notify(ex.message || ex, false); }
-}
-async function disable2FA(){
-  if (!confirm('Выключить 2FA?')) return;
-  try {
-    await api('/api/account/2fa', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'disable'})});
-    notify('2FA выключена', true);
-    document.getElementById('twofa-secret').textContent = '';
-    await load2FA();
-  } catch (ex) { notify(ex.message || ex, false); }
 }
 async function loadAudit(){
   const pre = document.getElementById('audit-log');

@@ -3,8 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"crypto/rand"
-	"encoding/base32"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -21,7 +19,6 @@ import (
 	"time"
 
 	"github.com/skip2/go-qrcode"
-	"github.com/pquerna/otp/totp"
 )
 
 const (
@@ -347,70 +344,6 @@ func handlePanelQR(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(png)
-}
-
-func handlePanel2FA(w http.ResponseWriter, r *http.Request) {
-	if !requirePanelAuth(w, r) {
-		return
-	}
-	if r.Method == http.MethodGet {
-		panelStoreMu.Lock()
-		enabled := panelStore != nil && panelStore.TOTPEnabled
-		pending := panelStore != nil && panelStore.TOTPSecret != "" && !panelStore.TOTPEnabled
-		panelStoreMu.Unlock()
-		writePanelJSON(w, map[string]interface{}{"enabled": enabled, "pending": pending})
-		return
-	}
-	if r.Method != http.MethodPost {
-		writePanelError(w, http.StatusMethodNotAllowed, "method")
-		return
-	}
-	if err := parsePanelForm(r); err != nil {
-		writePanelError(w, http.StatusBadRequest, "form")
-		return
-	}
-	action := strings.TrimSpace(r.FormValue("action"))
-	panelStoreMu.Lock()
-	defer panelStoreMu.Unlock()
-	if panelStore == nil {
-		panelStore = &panelFileStore{}
-	}
-	switch action {
-	case "setup":
-		secret := strings.TrimRight(base32.StdEncoding.EncodeToString(randomBytes(20)), "=")
-		panelStore.TOTPSecret = secret
-		_ = persistPanelStoreLocked()
-		issuer := "qwdtt-panel"
-		uri := fmt.Sprintf("otpauth://totp/%s:%s?secret=%s&issuer=%s", issuer, panelUser, secret, issuer)
-		writePanelJSON(w, map[string]interface{}{"secret": secret, "uri": uri, "enabled": panelStore.TOTPEnabled})
-	case "enable":
-		code := strings.TrimSpace(r.FormValue("code"))
-		if panelStore.TOTPSecret == "" || !totp.Validate(code, panelStore.TOTPSecret) {
-			writePanelError(w, http.StatusBadRequest, "неверный код")
-			return
-		}
-		panelStore.TOTPEnabled = true
-		_ = persistPanelStoreLocked()
-		panelAudit("2fa", "enabled")
-		writePanelJSON(w, map[string]bool{"ok": true, "enabled": true})
-	case "disable":
-		panelStore.TOTPEnabled = false
-		panelStore.TOTPSecret = ""
-		_ = persistPanelStoreLocked()
-		panelAudit("2fa", "disabled")
-		writePanelJSON(w, map[string]bool{"ok": true, "enabled": false})
-	default:
-		writePanelJSON(w, map[string]interface{}{
-			"enabled": panelStore.TOTPEnabled,
-			"pending": panelStore.TOTPSecret != "" && !panelStore.TOTPEnabled,
-		})
-	}
-}
-
-func randomBytes(n int) []byte {
-	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	return b
 }
 
 func handlePanelCsqttSettings(w http.ResponseWriter, r *http.Request) {

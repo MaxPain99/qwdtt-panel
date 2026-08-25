@@ -27,8 +27,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pquerna/otp/totp"
-
 	_ "embed"
 )
 
@@ -66,9 +64,7 @@ type panelFileStore struct {
 	CsqttURL      string                `json:"csqtt_url,omitempty"`
 	CsqttUser     string                `json:"csqtt_user,omitempty"`
 	CsqttPass     string                `json:"csqtt_pass,omitempty"`
-	Notify        panelNotifyConfig   `json:"notify,omitempty"`
-	TOTPSecret    string                `json:"totp_secret,omitempty"`
-	TOTPEnabled   bool                  `json:"totp_enabled,omitempty"`
+	Notify        panelNotifyConfig `json:"notify,omitempty"`
 }
 
 var (
@@ -160,7 +156,6 @@ func startWebPanel(configDir string, port uint16, user, pass string) {
 	mux.HandleFunc("/api/clients/reset-traffic", handlePanelResetTraffic)
 	mux.HandleFunc("/api/csqtt/unbind", handlePanelCsqttUnbind)
 	mux.HandleFunc("/api/account/password", handlePanelChangePassword)
-	mux.HandleFunc("/api/account/2fa", handlePanel2FA)
 	mux.HandleFunc("/api/account/notify", handlePanelNotifySettings)
 	mux.HandleFunc("/api/audit", handlePanelAudit)
 	mux.HandleFunc("/api/qr", handlePanelQR)
@@ -336,21 +331,6 @@ func handlePanelLogin(w http.ResponseWriter, r *http.Request) {
 		recordPanelLoginFailure(host, time.Now())
 		http.Redirect(w, r, "/login?bad=1", http.StatusFound)
 		return
-	}
-	panelStoreMu.Lock()
-	totpEnabled := panelStore != nil && panelStore.TOTPEnabled
-	totpSecret := ""
-	if panelStore != nil {
-		totpSecret = panelStore.TOTPSecret
-	}
-	panelStoreMu.Unlock()
-	if totpEnabled {
-		code := strings.TrimSpace(r.FormValue("totp"))
-		if code == "" || !totp.Validate(code, totpSecret) {
-			recordPanelLoginFailure(host, time.Now())
-			http.Redirect(w, r, "/login?bad=1&totp=1", http.StatusFound)
-			return
-		}
 	}
 	clearPanelLoginFailure(host)
 	tok := randomPanelPass() + randomPanelPass()
