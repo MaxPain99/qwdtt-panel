@@ -99,6 +99,15 @@ a{color:var(--md-primary);text-decoration:none}
 .expiry-warn{color:var(--md-error);font-weight:600;font-size:.82rem}
 .expiry-soon{color:#b45309;font-weight:600;font-size:.82rem}
 html[data-theme="dark"] .expiry-soon{color:#fbbf24}
+.client-bulk{
+  display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  margin:0 0 12px;padding:10px 12px;
+  background:var(--md-secondary-container);
+  color:var(--md-on-secondary-container);
+  border:1px solid var(--md-outline-variant);
+  border-radius:var(--md-shape-md);
+}
+.client-bulk .hint{color:inherit;margin:0;font-weight:600}
 .client-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .client-filters input,.client-filters select{
   min-height:36px;padding:0 12px;border:1px solid var(--md-outline-variant);
@@ -442,7 +451,7 @@ pre{
         <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('import-file').click()">Импорт</button>
         <input id="import-file" type="file" accept=".json,.csv,.txt" hidden onchange="importClients(event)">
       </div>
-      <div class="client-bulk row" id="client-bulk" hidden>
+      <div class="client-bulk" id="client-bulk" hidden>
         <span id="bulk-count" class="hint">0 выбрано</span>
         <button class="btn btn-tonal btn-sm" type="button" onclick="bulkAction('activate')">Включить</button>
         <button class="btn btn-tonal btn-sm" type="button" onclick="bulkAction('deactivate')">Выключить</button>
@@ -860,16 +869,20 @@ function changeClientPage(delta){
   renderClientLists();
 }
 function clientKey(c, kind){ return kind + ':' + (c.password || c.label || ''); }
-function toggleSelect(key, on){
-  if (on) selectedClients.add(key); else selectedClients.delete(key);
+function syncBulkBar(){
   const bulk = document.getElementById('client-bulk');
   const cnt = document.getElementById('bulk-count');
   if (bulk) bulk.hidden = selectedClients.size === 0;
   if (cnt) cnt.textContent = selectedClients.size + ' выбрано';
 }
+function toggleSelect(key, on){
+  if (!key) return;
+  if (on) selectedClients.add(key); else selectedClients.delete(key);
+  syncBulkBar();
+}
 function clearSelection(){
   selectedClients.clear();
-  toggleSelect('', false);
+  syncBulkBar();
   renderClientLists();
 }
 function selectedPasswords(kind){
@@ -927,6 +940,7 @@ function renderClientLists(){
       ? cPage.slice.map(c => renderClientCard(c, csqttRows.indexOf(c), 'csqtt')).join('')
       : '<p class="hint">Нет клиентов CSQTT</p>';
   }
+  syncBulkBar();
 }
 function exportClients(format){
   const kind = clientKind === 'csqtt' ? 'csqtt' : 'qwdtt';
@@ -967,7 +981,7 @@ function renderClientCard(c, i, kind){
         ids.map(id => {
           const short = String(id).length > 18 ? String(id).slice(0,8)+'…'+String(id).slice(-6) : String(id);
           return `<div class="device-row"><span title="${esc(id)}">${esc(short)}</span>
-            <button class="btn btn-ghost btn-sm" type="button" onclick="unbindDevice(${i},${JSON.stringify(String(id))})">Отвязать</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick='unbindDevice(${i},${JSON.stringify(String(id))})'>Отвязать</button>
           </div>`;
         }).join('') + `</div></div>`;
     }
@@ -998,7 +1012,7 @@ function renderClientCard(c, i, kind){
     </div>`;
   return `<article class="client-card${c.owner ? ' owner' : ''}">
     <div class="client-card-head">
-      ${c.owner ? '' : `<label class="check" style="margin:0"><input type="checkbox"${checked} onchange="toggleSelect(${JSON.stringify(selKey)}, this.checked)"></label>`}
+      ${c.owner ? '' : `<label class="check" style="margin:0"><input type="checkbox"${checked} onchange='toggleSelect(${JSON.stringify(selKey)}, this.checked)'></label>`}
       <div class="client-name">${esc(name)}</div>
       <span class="badge ${active?'on':'off'}">${active?'Активно':'Выкл'}</span>
     </div>
