@@ -1019,11 +1019,6 @@ async function refresh(){
       : '<span class="bad-dot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>';
     const statusCard = (ok, text) => mark(!!ok) + esc(text);
 
-    let wdttText = s.wdtt_ok ? 'работает' : 'не работает';
-
-    let csqttOk = !!s.csqtt_ok;
-    let csqttText = s.csqtt_ok ? 'работает' : (s.csqtt_error ? 'нет связи' : 'не работает');
-
     const socksOk = !!s.socks_on;
     const socksText = socksOk
       ? ('вкл · TCP '+(s.socks_tcp||0)+' · UDP '+(s.socks_udp||0)+(s.socks_ifaces&&s.socks_ifaces.length?' · '+s.socks_ifaces.join(', '):''))
@@ -1032,7 +1027,7 @@ async function refresh(){
     const logsOk = !!s.logs_active;
     const logsText = logsOk ? 'вкл' : 'выкл';
 
-    const rich = {CSQTT:1, qWDTT:1, 'SOCKS5 UDP':1, 'Логи':1};
+    const rich = {'SOCKS5 UDP':1, 'Логи':1};
     document.getElementById('stats').innerHTML = [
       ['Активные', (s.active||0) + actHint],
       ['Всего сессий', s.total],
@@ -1041,10 +1036,8 @@ async function refresh(){
       ['qWDTT ↑/↓', fmt(s.wdtt_up)+' / '+fmt(s.wdtt_down)],
       ['CSQTT ↑/↓', fmt(s.csqtt_up)+' / '+fmt(s.csqtt_down)],
       ['Uptime', s.uptime || '—'],
-      ['CSQTT', statusCard(csqttOk, csqttText)],
       ['SOCKS5 UDP', statusCard(socksOk, socksText)],
       ['Логи', statusCard(logsOk, logsText)],
-      ['qWDTT', statusCard(!!s.wdtt_ok, wdttText)],
     ].map(([k,v])=>`<div class="stat"><span class="k">${esc(k)}</span><div class="v">${rich[k]?v:esc(String(v??''))}</div></div>`).join('');
   } catch (ex) {
     document.getElementById('stats').innerHTML = `<div class="stat"><span class="k">Ошибка</span><div class="v">${esc(ex.message||ex)}</div></div>`;
