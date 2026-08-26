@@ -819,6 +819,9 @@ function filterSortClients(rows){
     });
   }
   list.sort((a,b) => {
+    const ao = a.owner ? 0 : 1;
+    const bo = b.owner ? 0 : 1;
+    if (ao !== bo) return ao - bo;
     if (sort === 'expires') {
       const ae = a.expires ? Date.parse(a.expires) : Infinity;
       const be = b.expires ? Date.parse(b.expires) : Infinity;
@@ -940,9 +943,8 @@ function renderClientCard(c, i, kind){
   const name = c.owner ? (kind === 'csqtt' ? (c.label || 'Главный пароль') : 'Главный пароль') : (c.label || 'клиент');
   const active = !c.deactivated;
   const expHint = c.owner ? '' : expiryHint(c.expires, c.deactivated);
-  const exp = c.owner ? '—' : (c.expires ? esc(c.expires) + (expHint ? ' · '+expHint : '') : '∞ Бессрочно');
+  const exp = c.owner ? '' : (c.expires ? esc(c.expires) + (expHint ? ' · '+expHint : '') : '∞');
   const flows = kind === 'csqtt' ? (c.sessions||0) : (c.active_devices||0);
-  const linkKey = kind === 'csqtt' ? 'csqtt_link' : 'qwdtt_link';
   const delFn = kind === 'csqtt' ? `delCsqtt(${i})` : `del(${i})`;
   const editFn = kind === 'csqtt' ? `openEdit(${i},'csqtt')` : `openEdit(${i},'qwdtt')`;
   const toggleFn = kind === 'csqtt' ? `toggleCsqtt(${i})` : `toggleClient(${i})`;
@@ -954,7 +956,7 @@ function renderClientCard(c, i, kind){
   if (kind === 'qwdtt' && !c.owner) {
     const ids = Array.isArray(c.device_ids) ? c.device_ids.filter(Boolean) : [];
     if (ids.length) {
-      devicesHtml = `<div><div class="field-k">Привязанные устройства</div><div class="device-list">` +
+      devicesHtml = `<div><div class="field-k">Устройства</div><div class="device-list">` +
         ids.map(id => {
           const short = String(id).length > 18 ? String(id).slice(0,8)+'…'+String(id).slice(-6) : String(id);
           return `<div class="device-row"><span title="${esc(id)}">${esc(short)}</span>
@@ -970,39 +972,36 @@ function renderClientCard(c, i, kind){
     csqttDevHtml = `<div><div class="field-k">Устройство</div><div class="device-row"><span title="${esc(id)}">${esc(short)}</span>
       <button class="btn btn-ghost btn-sm" type="button" onclick="unbindCsqtt(${i})">Отвязать</button></div></div>`;
   }
-  return `<article class="client-card">
+  const meta = c.owner
+    ? `<div class="client-meta">
+        <span><span class="meta-k">трафик</span>↑ ${fmt(c.up)} / ↓ ${fmt(c.down)}</span>
+        <span><span class="meta-k">${kind==='csqtt'?'потоки':'устройства'}</span><span class="flow">${flows}${kind==='qwdtt' ? '/'+maxDev : ''}</span></span>
+      </div>`
+    : `<div class="client-meta">
+        <span><span class="meta-k">срок</span>${exp}</span>
+        <span><span class="meta-k">трафик</span>↑ ${fmt(c.up)} / ↓ ${fmt(c.down)}</span>
+        <span><span class="meta-k">${kind==='csqtt'?'потоки':'устройства'}</span><span class="flow">${flows}${kind==='qwdtt' ? '/'+maxDev : ''}</span></span>
+      </div>`;
+  const actions = c.owner ? '' : `<div class="client-actions">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="showQRLink(${i},'${kind}')">QR</button>
+      <button class="btn btn-tonal btn-sm" type="button" onclick="${editFn}">Редактировать</button>
+      <button class="btn btn-tonal btn-sm" type="button" onclick="${toggleFn}">${active?'Выключить':'Включить'}</button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="resetTraffic(${i},'${kind}')">Сброс трафика</button>
+      <button class="btn btn-bad btn-sm" type="button" onclick="${delFn}">Удалить</button>
+    </div>`;
+  return `<article class="client-card${c.owner ? ' owner' : ''}">
     <div class="client-card-head">
-      ${c.owner ? '' : `<label class="check"><input type="checkbox"${checked} onchange="toggleSelect(${JSON.stringify(selKey)}, this.checked)"></label>`}
+      ${c.owner ? '' : `<label class="check" style="margin:0"><input type="checkbox"${checked} onchange="toggleSelect(${JSON.stringify(selKey)}, this.checked)"></label>`}
       <div class="client-name">${esc(name)}</div>
       <span class="badge ${active?'on':'off'}">${active?'Активно':'Выкл'}</span>
     </div>
-    <div>
-      <div class="field-k">Ключ (пароль)</div>
-      <div class="key-box">${esc(c.password)}
-        <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'password',this)">копировать</button>
-      </div>
+    <div class="key-box">${esc(c.password)}
+      <button class="btn btn-ghost btn-sm" type="button" onclick="${copyFn}(${i},'password',this)">копировать</button>
     </div>
-    <div>
-      <div class="field-k">Срок действия</div>
-      <div class="field-v">${exp}</div>
-    </div>
-    <div>
-      <div class="field-k">Трафик</div>
-      <div class="field-v">↑ ${fmt(c.up)} / ↓ ${fmt(c.down)}</div>
-    </div>
-    <div>
-      <div class="field-k">${kind==='csqtt'?'Потоки':'Устройства'}</div>
-      <span class="flow">${flows}${kind==='qwdtt' ? '/'+maxDev : ''}</span>
-    </div>
+    ${meta}
     ${devicesHtml}
     ${csqttDevHtml}
-    <div class="client-actions">
-      ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="showQRLink(${i},'${kind}')">QR</button>`}
-      ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${editFn}">Редактировать</button>`}
-      ${c.owner ? '' : `<button class="btn btn-tonal btn-sm" type="button" onclick="${toggleFn}">${active?'Выключить':'Включить'}</button>`}
-      ${c.owner ? '' : `<button class="btn btn-ghost btn-sm" type="button" onclick="resetTraffic(${i},'${kind}')">Сброс трафика</button>`}
-      ${c.owner ? '' : `<button class="btn btn-bad btn-sm" type="button" onclick="${delFn}">Удалить</button>`}
-    </div>
+    ${actions}
   </article>`;
 }
 
@@ -1764,9 +1763,7 @@ async function restartSvc(target){
   const labels = {qwdtt:'qWDTT (wdtt)', csqtt:'CSQTT', panel:'панель'};
   const label = labels[target] || target;
   if (!confirm('Перезапустить '+label+'?')) return;
-  const st = document.getElementById('svc-action');
   const el = svcStatusEl(target);
-  if (st) { st.className = 'status off'; st.textContent = 'Перезапускаю '+label+'…'; }
   if (el) { el.className = 'status off'; el.textContent = 'перезапускается…'; }
   try {
     const res = await api('/api/restart', {
@@ -1777,7 +1774,6 @@ async function restartSvc(target){
     if (res && res.services) paintServices(res.services);
     if (el) { el.className = 'status off'; el.textContent = 'перезапускается…'; }
     await waitServicesReady(target);
-    if (st) { st.textContent = ''; st.className = 'status off'; }
     if (target === 'csqtt') await loadCsqttSettings();
     await refresh().catch(()=>{});
   } catch (ex) {
@@ -1785,11 +1781,9 @@ async function restartSvc(target){
     if (target === 'panel') {
       if (el) { el.className = 'status off'; el.textContent = 'перезапускается…'; }
       await waitServicesReady('panel', 12);
-      if (st) { st.textContent = ''; st.className = 'status off'; }
       await refresh().catch(()=>{});
       return;
     }
-    if (st) { st.className = 'status bad'; st.textContent = ex.message || ex; }
     if (el) { el.className = 'status bad'; el.textContent = ex.message || ex; }
     await loadServices();
     notify(ex.message || ex, false);
