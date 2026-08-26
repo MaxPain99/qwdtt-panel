@@ -194,49 +194,56 @@ html[data-theme="dark"] .expiry-soon{color:#fbbf24}
 .hint{color:var(--md-on-surface-variant);font-size:.88rem;line-height:1.55;margin:0 0 12px}
 .hint b{color:var(--md-on-surface);font-weight:600}
 
-.client-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.client-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
 .client-card{
   background:var(--md-surface-container-lowest, var(--md-surface));
   border:1px solid var(--md-outline-variant);
-  border-radius:var(--md-shape-lg);padding:16px;
+  border-radius:var(--md-shape-lg);padding:12px 14px;
   box-shadow:var(--md-elevation-1);
-  display:flex;flex-direction:column;gap:12px;
+  display:flex;flex-direction:column;gap:8px;
 }
 html:not([data-theme="dark"]) .client-card{background:#fff}
-.client-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-.client-name{font-size:1rem;font-weight:700;word-break:break-word}
+.client-card.owner{gap:6px}
+.client-card-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.client-name{font-size:.95rem;font-weight:700;word-break:break-word;line-height:1.25}
 .badge{
-  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;
-  border-radius:var(--md-shape-sm);font-size:.75rem;font-weight:700;
+  display:inline-flex;align-items:center;gap:5px;padding:2px 8px;
+  border-radius:var(--md-shape-sm);font-size:.7rem;font-weight:700;flex-shrink:0;
 }
 .badge.on{background:var(--md-success-container);color:var(--md-on-success-container)}
 .badge.off{background:var(--md-surface-container-high);color:var(--md-on-surface-variant)}
-.badge.on::before,.badge.off::before{content:"";width:8px;height:8px;border-radius:50%}
+.badge.on::before,.badge.off::before{content:"";width:7px;height:7px;border-radius:50%}
 .badge.on::before{background:var(--md-success)}
 .badge.off::before{background:var(--md-outline)}
-.field-k{font-size:.72rem;font-weight:500;color:var(--md-on-surface-variant);margin-bottom:4px}
-.field-v{font-weight:500}
+.field-k{font-size:.7rem;font-weight:500;color:var(--md-on-surface-variant);margin-bottom:2px}
+.field-v{font-weight:500;font-size:.88rem}
 .key-box{
-  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
   background:var(--md-surface-container);border-radius:var(--md-shape-sm);
-  padding:10px 12px;font-family:var(--mono);font-size:.82rem;
+  padding:6px 10px;font-family:var(--mono);font-size:.78rem;
   color:var(--md-on-surface);word-break:break-all;
   border:1px solid var(--md-outline-variant);
 }
 .key-box .btn{margin-left:auto}
+.client-meta{
+  display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;
+  font-size:.82rem;font-weight:500;color:var(--md-on-surface);
+}
+.client-meta .meta-k{font-size:.7rem;font-weight:500;color:var(--md-on-surface-variant);margin-right:4px}
 .flow{
-  display:inline-flex;min-width:32px;height:32px;padding:0 10px;align-items:center;justify-content:center;
-  border-radius:var(--md-shape-sm);background:var(--md-surface-container-high);font-weight:700;
+  display:inline-flex;min-width:28px;height:24px;padding:0 8px;align-items:center;justify-content:center;
+  border-radius:var(--md-shape-sm);background:var(--md-surface-container-high);font-weight:700;font-size:.82rem;
 }
 .client-actions{
-  display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;margin-top:4px;
+  display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;margin-top:2px;
   border-top:1px solid var(--md-outline-variant);
 }
-.device-list{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.client-actions:empty{display:none}
+.device-list{display:flex;flex-direction:column;gap:4px;margin-top:4px}
 .device-row{
-  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  padding:6px 10px;border-radius:var(--md-shape-sm);
-  background:var(--md-surface-container);font-family:var(--mono);font-size:.78rem;
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:4px 8px;border-radius:var(--md-shape-sm);
+  background:var(--md-surface-container);font-family:var(--mono);font-size:.74rem;
 }
 .device-row .btn{margin-left:auto}
 .update-log{
